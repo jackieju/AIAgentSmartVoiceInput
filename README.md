@@ -44,9 +44,19 @@ curl -L -o ~/.local/share/whisper-cpp/models/ggml-large-v3-turbo.bin \
 - **Microphone**：添加 `VoiceInput.app`
 - **Accessibility**：添加 `inject-helper`
 
-### 4. 添加到 Login Items（开机自启）
+### 4. 开机自启 + 自动重启
 
-System Settings → General → Login Items → 添加 `VoiceInput.app`
+```bash
+cp com.voiceinput.app.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.voiceinput.app.plist
+```
+
+VoiceInput 会开机自动启动，被强制退出后也会自动重启。
+
+停止自动重启：
+```bash
+launchctl unload ~/Library/LaunchAgents/com.voiceinput.app.plist
+```
 
 ## 使用
 
@@ -57,8 +67,9 @@ open VoiceInput.app
 
 快捷键：**Option+Shift+V**
 
-- 第一次按：开始录音（菜单栏图标变 ⏺）
+- 第一次按：开始录音（菜单栏图标变 🔴）
 - 第二次按：停止录音，转录，自动粘贴到当前终端并回车发送
+- 录音中按 **Escape**：取消录音，什么也不做
 
 ## 架构
 
