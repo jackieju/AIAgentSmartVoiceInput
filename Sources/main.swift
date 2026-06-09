@@ -251,6 +251,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func injectText(_ text: String) {
         debugLog("Injecting text: \(text)")
+        ensureDaemonRunning()
         let triggerFile = "/tmp/voiceinput_inject.txt"
         do {
             try text.write(toFile: triggerFile, atomically: false, encoding: .utf8)
