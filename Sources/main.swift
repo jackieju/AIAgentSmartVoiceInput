@@ -57,9 +57,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         updateStatusIcon()
 
         let menu = NSMenu()
-        menu.addItem(NSMenuItem(title: "VoiceInput (Option+Shift+V)", action: nil, keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "VoiceInput", action: nil, keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "  Hotkey: Option+Shift+V", action: nil, keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "  Cancel: Escape", action: nil, keyEquivalent: ""))
         menu.addItem(NSMenuItem.separator())
-        menu.addItem(NSMenuItem(title: "Quit", action: #selector(quit), keyEquivalent: "q"))
+        let quitItem = NSMenuItem(title: "Quit", action: #selector(quit), keyEquivalent: "q")
+        quitItem.target = self
+        menu.addItem(quitItem)
         statusItem.menu = menu
     }
 
