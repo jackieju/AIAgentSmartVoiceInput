@@ -43,10 +43,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private var state: RecordingState = .idle
     private var audioRecorder: AudioRecorder?
+    private var currentHotKeyRef: EventHotKeyRef?
+    private var hotkeyLabel: NSMenuItem!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupStatusItem()
-        setupGlobalHotkey()
+        registerHotkey()
         audioRecorder = AudioRecorder()
         checkPermissions()
         ensureDaemonRunning()
@@ -66,8 +68,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         stopItem.target = self
         menu.addItem(stopItem)
         menu.addItem(NSMenuItem.separator())
-        menu.addItem(NSMenuItem(title: "  Hotkey: Ctrl+F1", action: nil, keyEquivalent: ""))
+        hotkeyLabel = NSMenuItem(title: "  Hotkey: \(savedHotkeyDisplay())", action: nil, keyEquivalent: "")
+        menu.addItem(hotkeyLabel)
         menu.addItem(NSMenuItem(title: "  Cancel: Escape", action: nil, keyEquivalent: ""))
+        menu.addItem(NSMenuItem.separator())
+        let settingsItem = NSMenuItem(title: "Settings...", action: #selector(openSettings), keyEquivalent: ",")
+        settingsItem.target = self
+        menu.addItem(settingsItem)
         menu.addItem(NSMenuItem.separator())
         let quitItem = NSMenuItem(title: "Quit", action: #selector(quit), keyEquivalent: "q")
         quitItem.target = self
@@ -83,27 +90,70 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if state == .recording { stopRecordingAndTranscribe() }
     }
 
-    private func updateStatusIcon() {
-        guard let button = statusItem.button else { return }
-        button.image = nil
-        switch state {
-        case .idle:
-            button.title = "🎤"
-        case .recording:
-            button.title = "🔴"
-        case .transcribing:
-            button.title = "⏳"
+    @objc private func openSettings() {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 360, height: 140),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "VoiceInput Settings"
+        window.center()
+
+        let contentView = NSView(frame: window.contentView!.bounds)
+
+        let label = NSTextField(labelWithString: "Press new hotkey:")
+        label.frame = NSRect(x: 20, y: 100, width: 320, height: 20)
+        contentView.addSubview(label)
+
+        let keyField = HotkeyField(frame: NSRect(x: 20, y: 60, width: 320, height: 30))
+        keyField.isEditable = false
+        keyField.alignment = .center
+        keyField.font = NSFont.systemFont(ofSize: 16)
+        keyField.stringValue = savedHotkeyDisplay()
+        keyField.onHotkeyCapture = { [weak self] keyCode, modifiers, display in
+            UserDefaults.standard.set(Int(keyCode), forKey: "hotkeyKeyCode")
+            UserDefaults.standard.set(Int(modifiers), forKey: "hotkeyModifiers")
+            UserDefaults.standard.set(display, forKey: "hotkeyDisplay")
+            self?.registerHotkey()
+            self?.hotkeyLabel.title = "  Hotkey: \(display)"
+            keyField.stringValue = display
         }
+        contentView.addSubview(keyField)
+
+        let hint = NSTextField(labelWithString: "Click the field above, then press your desired hotkey combination.")
+        hint.frame = NSRect(x: 20, y: 20, width: 320, height: 30)
+        hint.font = NSFont.systemFont(ofSize: 11)
+        hint.textColor = .secondaryLabelColor
+        contentView.addSubview(hint)
+
+        window.contentView = contentView
+        window.makeKeyAndOrderFront(nil)
+        window.level = .floating
+        NSApp.activate(ignoringOtherApps: true)
+        
+        objc_setAssociatedObject(NSApp!, "settingsWindow", window, .OBJC_ASSOCIATION_RETAIN)
     }
 
-    private func setupGlobalHotkey() {
-        var hotKeyRef: EventHotKeyRef?
-        let hotKeyID = EventHotKeyID(signature: OSType(0x56494E50), id: 1) // "VINP"
-        // Ctrl+F1: modifiers controlKey=0x1000; F1 keycode=122
-        let modifiers: UInt32 = UInt32(controlKey)
-        let status = RegisterEventHotKey(122, modifiers, hotKeyID, GetApplicationEventTarget(), 0, &hotKeyRef)
+    private func savedHotkeyDisplay() -> String {
+        UserDefaults.standard.string(forKey: "hotkeyDisplay") ?? "Ctrl+F1"
+    }
+
+    private func registerHotkey() {
+        if let existing = currentHotKeyRef {
+            UnregisterEventHotKey(existing)
+            currentHotKeyRef = nil
+        }
+
+        let keyCode: UInt32 = UInt32(UserDefaults.standard.integer(forKey: "hotkeyKeyCode") != 0
+            ? UserDefaults.standard.integer(forKey: "hotkeyKeyCode") : 122)
+        let modifiers: UInt32 = UInt32(UserDefaults.standard.integer(forKey: "hotkeyModifiers") != 0
+            ? UserDefaults.standard.integer(forKey: "hotkeyModifiers") : controlKey)
+
+        let hotKeyID = EventHotKeyID(signature: OSType(0x56494E50), id: 1)
+        let status = RegisterEventHotKey(keyCode, modifiers, hotKeyID, GetApplicationEventTarget(), 0, &currentHotKeyRef)
         if status != noErr {
-            debugLog(" Failed to register hotkey (status: \(status))")
+            debugLog("Failed to register hotkey (status: \(status))")
             return
         }
 
@@ -116,7 +166,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         InstallEventHandler(GetApplicationEventTarget(), { (_, event, _) -> OSStatus in
             var hotkeyID = EventHotKeyID()
             GetEventParameter(event!, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID), nil, MemoryLayout<EventHotKeyID>.size, nil, &hotkeyID)
-            
+
             let app = NSApplication.shared.delegate as! AppDelegate
             if hotkeyID.id == 2 {
                 DispatchQueue.main.async { app.cancelRecording() }
@@ -126,7 +176,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return noErr
         }, 1, &eventType, nil, nil)
 
-        debugLog(" Hotkey Ctrl+F1 registered successfully (no Accessibility needed)")
+        debugLog("Hotkey \(savedHotkeyDisplay()) registered successfully")
     }
 
     private func cancelRecording() {
@@ -135,6 +185,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         state = .idle
         updateStatusIcon()
         debugLog("Recording cancelled by Escape")
+    }
+
+    private func updateStatusIcon() {
+        guard let button = statusItem.button else { return }
+        button.image = nil
+        switch state {
+        case .idle:
+            button.title = "🎤"
+        case .recording:
+            button.title = "🔴"
+        case .transcribing:
+            button.title = "⏳"
+        }
     }
 
     private func toggleRecording() {
@@ -403,5 +466,108 @@ class AudioRecorder {
         audioEngine = nil
         outputFile = nil
         return outputURL
+    }
+}
+
+class HotkeyField: NSTextField {
+    var onHotkeyCapture: ((UInt32, UInt32, String) -> Void)?
+
+    override var acceptsFirstResponder: Bool { true }
+
+    override func keyDown(with event: NSEvent) {
+        let keyCode = event.keyCode
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+
+        if flags.isEmpty { return }
+
+        var parts: [String] = []
+        var carbonModifiers: UInt32 = 0
+
+        if flags.contains(.control) {
+            parts.append("Ctrl")
+            carbonModifiers |= UInt32(controlKey)
+        }
+        if flags.contains(.option) {
+            parts.append("Option")
+            carbonModifiers |= UInt32(optionKey)
+        }
+        if flags.contains(.shift) {
+            parts.append("Shift")
+            carbonModifiers |= UInt32(shiftKey)
+        }
+        if flags.contains(.command) {
+            parts.append("Cmd")
+            carbonModifiers |= UInt32(cmdKey)
+        }
+
+        let keyName = keyCodeToName(keyCode)
+        parts.append(keyName)
+
+        let display = parts.joined(separator: "+")
+        onHotkeyCapture?(UInt32(keyCode), carbonModifiers, display)
+    }
+
+    private func keyCodeToName(_ code: UInt16) -> String {
+        switch Int(code) {
+        case kVK_F1: return "F1"
+        case kVK_F2: return "F2"
+        case kVK_F3: return "F3"
+        case kVK_F4: return "F4"
+        case kVK_F5: return "F5"
+        case kVK_F6: return "F6"
+        case kVK_F7: return "F7"
+        case kVK_F8: return "F8"
+        case kVK_F9: return "F9"
+        case kVK_F10: return "F10"
+        case kVK_F11: return "F11"
+        case kVK_F12: return "F12"
+        case kVK_Space: return "Space"
+        case kVK_Return: return "Return"
+        case kVK_Tab: return "Tab"
+        case kVK_Delete: return "Delete"
+        case kVK_Escape: return "Escape"
+        case kVK_ANSI_A: return "A"
+        case kVK_ANSI_B: return "B"
+        case kVK_ANSI_C: return "C"
+        case kVK_ANSI_D: return "D"
+        case kVK_ANSI_E: return "E"
+        case kVK_ANSI_F: return "F"
+        case kVK_ANSI_G: return "G"
+        case kVK_ANSI_H: return "H"
+        case kVK_ANSI_I: return "I"
+        case kVK_ANSI_J: return "J"
+        case kVK_ANSI_K: return "K"
+        case kVK_ANSI_L: return "L"
+        case kVK_ANSI_M: return "M"
+        case kVK_ANSI_N: return "N"
+        case kVK_ANSI_O: return "O"
+        case kVK_ANSI_P: return "P"
+        case kVK_ANSI_Q: return "Q"
+        case kVK_ANSI_R: return "R"
+        case kVK_ANSI_S: return "S"
+        case kVK_ANSI_T: return "T"
+        case kVK_ANSI_U: return "U"
+        case kVK_ANSI_V: return "V"
+        case kVK_ANSI_W: return "W"
+        case kVK_ANSI_X: return "X"
+        case kVK_ANSI_Y: return "Y"
+        case kVK_ANSI_Z: return "Z"
+        case kVK_ANSI_0: return "0"
+        case kVK_ANSI_1: return "1"
+        case kVK_ANSI_2: return "2"
+        case kVK_ANSI_3: return "3"
+        case kVK_ANSI_4: return "4"
+        case kVK_ANSI_5: return "5"
+        case kVK_ANSI_6: return "6"
+        case kVK_ANSI_7: return "7"
+        case kVK_ANSI_8: return "8"
+        case kVK_ANSI_9: return "9"
+        default: return "Key\(code)"
+        }
+    }
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        keyDown(with: event)
+        return true
     }
 }
