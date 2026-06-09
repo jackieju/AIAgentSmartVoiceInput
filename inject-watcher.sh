@@ -1,6 +1,6 @@
 #!/bin/bash
 TRIGGER="/tmp/voiceinput_inject.txt"
-HELPER="/Users/I027910/Desktop/ju/projects/VoiceInput/inject-helper"
+HELPER="/Users/I027910/Desktop/ju/projects/AIAgentSmartVoiceInput/inject-helper"
 
 > "$TRIGGER"
 echo "inject-watcher running, watching $TRIGGER"

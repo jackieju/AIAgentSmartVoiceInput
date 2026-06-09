@@ -250,7 +250,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         check.waitUntilExit()
         
         if check.terminationStatus != 0 {
-            let commandFile = URL(fileURLWithPath: "/Users/I027910/Desktop/ju/projects/VoiceInput/start-daemon.command")
+            let commandFile = URL(fileURLWithPath: "/Users/I027910/Desktop/ju/projects/AIAgentSmartVoiceInput/start-daemon.command")
             NSWorkspace.shared.open(commandFile)
             debugLog("Started inject-helper daemon via start-daemon.command")
         } else {

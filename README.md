@@ -14,7 +14,7 @@ macOS 语音输入工具，按快捷键录音，自动转录并粘贴到当前�
 ### 1. 编译
 
 ```bash
-cd /Users/I027910/Desktop/ju/projects/VoiceInput
+cd /Users/I027910/Desktop/ju/projects/AIAgentSmartVoiceInput
 swift build
 cp .build/debug/VoiceInput VoiceInput.app/Contents/MacOS/VoiceInput
 codesign -s - --force --deep --entitlements VoiceInput.entitlements VoiceInput.app
