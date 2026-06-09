@@ -58,13 +58,29 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         let menu = NSMenu()
         menu.addItem(NSMenuItem(title: "VoiceInput", action: nil, keyEquivalent: ""))
-        menu.addItem(NSMenuItem(title: "  Hotkey: Option+Shift+V", action: nil, keyEquivalent: ""))
+        menu.addItem(NSMenuItem.separator())
+        let startItem = NSMenuItem(title: "Start Recording", action: #selector(menuStartRecording), keyEquivalent: "")
+        startItem.target = self
+        menu.addItem(startItem)
+        let stopItem = NSMenuItem(title: "Stop Recording", action: #selector(menuStopRecording), keyEquivalent: "")
+        stopItem.target = self
+        menu.addItem(stopItem)
+        menu.addItem(NSMenuItem.separator())
+        menu.addItem(NSMenuItem(title: "  Hotkey: Ctrl+F1", action: nil, keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "  Cancel: Escape", action: nil, keyEquivalent: ""))
         menu.addItem(NSMenuItem.separator())
         let quitItem = NSMenuItem(title: "Quit", action: #selector(quit), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)
         statusItem.menu = menu
+    }
+
+    @objc private func menuStartRecording() {
+        if state == .idle { startRecording() }
+    }
+
+    @objc private func menuStopRecording() {
+        if state == .recording { stopRecordingAndTranscribe() }
     }
 
     private func updateStatusIcon() {
@@ -83,9 +99,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func setupGlobalHotkey() {
         var hotKeyRef: EventHotKeyRef?
         let hotKeyID = EventHotKeyID(signature: OSType(0x56494E50), id: 1) // "VINP"
-        // Option+Shift+V: modifiers optionKey=0x0800, shiftKey=0x0200; V keycode=9
-        let modifiers: UInt32 = UInt32(optionKey | shiftKey)
-        let status = RegisterEventHotKey(9, modifiers, hotKeyID, GetApplicationEventTarget(), 0, &hotKeyRef)
+        // Ctrl+F1: modifiers controlKey=0x1000; F1 keycode=122
+        let modifiers: UInt32 = UInt32(controlKey)
+        let status = RegisterEventHotKey(122, modifiers, hotKeyID, GetApplicationEventTarget(), 0, &hotKeyRef)
         if status != noErr {
             debugLog(" Failed to register hotkey (status: \(status))")
             return
@@ -110,7 +126,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return noErr
         }, 1, &eventType, nil, nil)
 
-        debugLog(" Hotkey Option+Shift+V registered successfully (no Accessibility needed)")
+        debugLog(" Hotkey Ctrl+F1 registered successfully (no Accessibility needed)")
     }
 
     private func cancelRecording() {
