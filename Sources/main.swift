@@ -70,7 +70,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         case .idle:
             button.title = "🎤"
         case .recording:
-            button.title = "⏺"
+            button.title = "🔴"
         case .transcribing:
             button.title = "⏳"
         }
