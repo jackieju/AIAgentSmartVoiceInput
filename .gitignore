@@ -1,0 +1,6 @@
+.build/
+VoiceInput.app/Contents/MacOS/VoiceInput
+VoiceInput.app/Contents/_CodeSignature/
+VoiceInput
+inject-helper
+.DS_Store
