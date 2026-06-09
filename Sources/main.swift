@@ -87,14 +87,34 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
+        // Escape key: keycode=53, no modifiers
+        var escHotKeyRef: EventHotKeyRef?
+        let escHotKeyID = EventHotKeyID(signature: OSType(0x56494E50), id: 2)
+        RegisterEventHotKey(53, 0, escHotKeyID, GetApplicationEventTarget(), 0, &escHotKeyRef)
+
         var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
         InstallEventHandler(GetApplicationEventTarget(), { (_, event, _) -> OSStatus in
+            var hotkeyID = EventHotKeyID()
+            GetEventParameter(event!, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID), nil, MemoryLayout<EventHotKeyID>.size, nil, &hotkeyID)
+            
             let app = NSApplication.shared.delegate as! AppDelegate
-            DispatchQueue.main.async { app.toggleRecording() }
+            if hotkeyID.id == 2 {
+                DispatchQueue.main.async { app.cancelRecording() }
+            } else {
+                DispatchQueue.main.async { app.toggleRecording() }
+            }
             return noErr
         }, 1, &eventType, nil, nil)
 
         debugLog(" Hotkey Option+Shift+V registered successfully (no Accessibility needed)")
+    }
+
+    private func cancelRecording() {
+        guard state == .recording, let recorder = audioRecorder else { return }
+        _ = recorder.stopRecording()
+        state = .idle
+        updateStatusIcon()
+        debugLog("Recording cancelled by Escape")
     }
 
     private func toggleRecording() {
