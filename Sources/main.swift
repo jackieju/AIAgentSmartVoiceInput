@@ -68,9 +68,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let settingsItem = NSMenuItem(title: "Settings...", action: #selector(openSettings), keyEquivalent: ",")
         settingsItem.target = self
         menu.addItem(settingsItem)
-        let suggestedItem = NSMenuItem(title: "Suggested Hotkeys...", action: #selector(showSuggestedHotkeys), keyEquivalent: "")
-        suggestedItem.target = self
-        menu.addItem(suggestedItem)
         menu.addItem(NSMenuItem.separator())
         let quitItem = NSMenuItem(title: "Quit", action: #selector(quit), keyEquivalent: "q")
         quitItem.target = self
@@ -174,6 +171,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self?.hotkeyLabel.title = "  Hotkey: \(display)"
         }
         contentView.addSubview(keyField)
+
+        let suggestBtn = NSButton(frame: NSRect(x: 220, y: y - 20, width: 120, height: 20))
+        suggestBtn.title = "Suggested Hotkeys"
+        suggestBtn.bezelStyle = .inline
+        suggestBtn.font = NSFont.systemFont(ofSize: 11)
+        suggestBtn.target = self
+        suggestBtn.action = #selector(showSuggestedHotkeys)
+        contentView.addSubview(suggestBtn)
+
         y -= 50
 
         let providerTitle = NSTextField(labelWithString: "Transcription Provider:")
