@@ -128,7 +128,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func openSettings() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 360, height: 140),
+            contentRect: NSRect(x: 0, y: 0, width: 360, height: 280),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -138,19 +138,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         let contentView = NSView(frame: window.contentView!.bounds)
 
-        let label = NSTextField(labelWithString: "Press new hotkey:")
-        label.frame = NSRect(x: 20, y: 100, width: 320, height: 20)
-        contentView.addSubview(label)
+        var y = 245
 
-        let keyField = HotkeyField(frame: NSRect(x: 20, y: 70, width: 320, height: 30))
+        let hotkeyTitle = NSTextField(labelWithString: "Hotkey:")
+        hotkeyTitle.frame = NSRect(x: 20, y: y, width: 320, height: 18)
+        hotkeyTitle.font = NSFont.boldSystemFont(ofSize: 12)
+        contentView.addSubview(hotkeyTitle)
+        y -= 30
+
+        let keyField = HotkeyField(frame: NSRect(x: 20, y: y, width: 320, height: 28))
         keyField.isEditable = false
         keyField.alignment = .center
-        keyField.font = NSFont.systemFont(ofSize: 16)
+        keyField.font = NSFont.systemFont(ofSize: 14)
         keyField.stringValue = savedHotkeyDisplay()
 
         let conflictLabel = NSTextField(labelWithString: "")
-        conflictLabel.frame = NSRect(x: 20, y: 45, width: 320, height: 18)
-        conflictLabel.font = NSFont.systemFont(ofSize: 11)
+        conflictLabel.frame = NSRect(x: 20, y: y - 18, width: 320, height: 16)
+        conflictLabel.font = NSFont.systemFont(ofSize: 10)
         conflictLabel.textColor = .systemRed
         contentView.addSubview(conflictLabel)
 
@@ -170,12 +174,42 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self?.hotkeyLabel.title = "  Hotkey: \(display)"
         }
         contentView.addSubview(keyField)
+        y -= 50
 
-        let hint = NSTextField(labelWithString: "Click the field above, then press your desired hotkey combination.")
-        hint.frame = NSRect(x: 20, y: 20, width: 320, height: 30)
-        hint.font = NSFont.systemFont(ofSize: 11)
-        hint.textColor = .secondaryLabelColor
-        contentView.addSubview(hint)
+        let providerTitle = NSTextField(labelWithString: "Transcription Provider:")
+        providerTitle.frame = NSRect(x: 20, y: y, width: 320, height: 18)
+        providerTitle.font = NSFont.boldSystemFont(ofSize: 12)
+        contentView.addSubview(providerTitle)
+        y -= 28
+
+        let providerPopup = NSPopUpButton(frame: NSRect(x: 20, y: y, width: 320, height: 26))
+        providerPopup.addItems(withTitles: ["Local (whisper-cpp)", "OpenAI Whisper API", "Groq Whisper API"])
+        let savedProvider = UserDefaults.standard.integer(forKey: "transcriptionProvider")
+        providerPopup.selectItem(at: savedProvider)
+        providerPopup.target = self
+        providerPopup.action = #selector(providerChanged(_:))
+        contentView.addSubview(providerPopup)
+        y -= 35
+
+        let apiKeyTitle = NSTextField(labelWithString: "API Key:")
+        apiKeyTitle.frame = NSRect(x: 20, y: y, width: 320, height: 18)
+        apiKeyTitle.font = NSFont.boldSystemFont(ofSize: 12)
+        contentView.addSubview(apiKeyTitle)
+        y -= 26
+
+        let apiKeyField = NSSecureTextField(frame: NSRect(x: 20, y: y, width: 320, height: 24))
+        apiKeyField.placeholderString = "sk-... (required for OpenAI/Groq)"
+        apiKeyField.stringValue = UserDefaults.standard.string(forKey: "apiKey") ?? ""
+        apiKeyField.target = self
+        apiKeyField.action = #selector(apiKeyChanged(_:))
+        contentView.addSubview(apiKeyField)
+        y -= 22
+
+        let apiHint = NSTextField(labelWithString: "Not needed for Local mode.")
+        apiHint.frame = NSRect(x: 20, y: y, width: 320, height: 16)
+        apiHint.font = NSFont.systemFont(ofSize: 10)
+        apiHint.textColor = .secondaryLabelColor
+        contentView.addSubview(apiHint)
 
         window.contentView = contentView
         window.makeKeyAndOrderFront(nil)
@@ -183,6 +217,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
         
         objc_setAssociatedObject(NSApp!, "settingsWindow", window, .OBJC_ASSOCIATION_RETAIN)
+    }
+
+    @objc private func providerChanged(_ sender: NSPopUpButton) {
+        UserDefaults.standard.set(sender.indexOfSelectedItem, forKey: "transcriptionProvider")
+        debugLog("Provider changed to: \(sender.titleOfSelectedItem ?? "")")
+    }
+
+    @objc private func apiKeyChanged(_ sender: NSTextField) {
+        UserDefaults.standard.set(sender.stringValue, forKey: "apiKey")
     }
 
     private func checkHotkeyConflict(keyCode: UInt32, modifiers: UInt32) -> String? {
@@ -361,6 +404,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func transcribe(wavURL: URL) -> String? {
+        let provider = UserDefaults.standard.integer(forKey: "transcriptionProvider")
+        var output: String?
+        switch provider {
+        case 1: output = transcribeViaAPI(wavURL: wavURL, provider: "openai")
+        case 2: output = transcribeViaAPI(wavURL: wavURL, provider: "groq")
+        default: output = transcribeLocal(wavURL: wavURL)
+        }
+        if let text = output {
+            output = text.replacingOccurrences(of: "\\.$|。$", with: "", options: .regularExpression)
+        }
+        debugLog(" Transcribed: \(output ?? "")")
+        return output
+    }
+
+    private func transcribeLocal(wavURL: URL) -> String? {
         let modelPath = NSString("~/.local/share/whisper-cpp/models").expandingTildeInPath
         let modelDir = URL(fileURLWithPath: modelPath)
 
@@ -416,12 +474,68 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        var output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let text = output {
-            output = text.replacingOccurrences(of: "\\.$|。$", with: "", options: .regularExpression)
+        return String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func transcribeViaAPI(wavURL: URL, provider: String) -> String? {
+        guard let apiKey = UserDefaults.standard.string(forKey: "apiKey"), !apiKey.isEmpty else {
+            debugLog("API key not set")
+            return nil
         }
-        debugLog(" Transcribed: \(output ?? "")")
-        return output
+
+        let endpoint: URL
+        switch provider {
+        case "groq":
+            endpoint = URL(string: "https://api.groq.com/openai/v1/audio/transcriptions")!
+        default:
+            endpoint = URL(string: "https://api.openai.com/v1/audio/transcriptions")!
+        }
+
+        guard let audioData = try? Data(contentsOf: wavURL) else {
+            debugLog("Failed to read audio file")
+            return nil
+        }
+
+        let boundary = UUID().uuidString
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 30
+
+        var body = Data()
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"audio.wav\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: audio/wav\r\n\r\n".data(using: .utf8)!)
+        body.append(audioData)
+        body.append("\r\n--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"model\"\r\n\r\n".data(using: .utf8)!)
+        body.append((provider == "groq" ? "whisper-large-v3-turbo" : "whisper-1").data(using: .utf8)!)
+        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+        request.httpBody = body
+
+        debugLog("Calling \(provider) API...")
+        var result: String?
+        let semaphore = DispatchSemaphore(value: 0)
+
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            defer { semaphore.signal() }
+            if let error = error {
+                debugLog("API error: \(error.localizedDescription)")
+                return
+            }
+            guard let data = data else { return }
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let text = json["text"] as? String {
+                result = text
+            } else {
+                let raw = String(data: data, encoding: .utf8) ?? ""
+                debugLog("API response parse failed: \(raw)")
+            }
+        }.resume()
+
+        semaphore.wait()
+        return result
     }
 
     private func injectText(_ text: String) {
