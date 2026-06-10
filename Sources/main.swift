@@ -61,13 +61,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let menu = NSMenu()
         menu.addItem(NSMenuItem(title: "VoiceInput", action: nil, keyEquivalent: ""))
         menu.addItem(NSMenuItem.separator())
-        let startItem = NSMenuItem(title: "Start Recording", action: #selector(menuStartRecording), keyEquivalent: "")
-        startItem.target = self
-        menu.addItem(startItem)
-        let stopItem = NSMenuItem(title: "Stop Recording", action: #selector(menuStopRecording), keyEquivalent: "")
-        stopItem.target = self
-        menu.addItem(stopItem)
-        menu.addItem(NSMenuItem.separator())
         hotkeyLabel = NSMenuItem(title: "  Hotkey: \(savedHotkeyDisplay())", action: nil, keyEquivalent: "")
         menu.addItem(hotkeyLabel)
         menu.addItem(NSMenuItem(title: "  Cancel: Escape", action: nil, keyEquivalent: ""))
@@ -80,14 +73,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         quitItem.target = self
         menu.addItem(quitItem)
         statusItem.menu = menu
-    }
-
-    @objc private func menuStartRecording() {
-        if state == .idle { startRecording() }
-    }
-
-    @objc private func menuStopRecording() {
-        if state == .recording { stopRecordingAndTranscribe() }
     }
 
     @objc private func openSettings() {
@@ -106,18 +91,32 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         label.frame = NSRect(x: 20, y: 100, width: 320, height: 20)
         contentView.addSubview(label)
 
-        let keyField = HotkeyField(frame: NSRect(x: 20, y: 60, width: 320, height: 30))
+        let keyField = HotkeyField(frame: NSRect(x: 20, y: 70, width: 320, height: 30))
         keyField.isEditable = false
         keyField.alignment = .center
         keyField.font = NSFont.systemFont(ofSize: 16)
         keyField.stringValue = savedHotkeyDisplay()
+
+        let conflictLabel = NSTextField(labelWithString: "")
+        conflictLabel.frame = NSRect(x: 20, y: 45, width: 320, height: 18)
+        conflictLabel.font = NSFont.systemFont(ofSize: 11)
+        conflictLabel.textColor = .systemRed
+        contentView.addSubview(conflictLabel)
+
         keyField.onHotkeyCapture = { [weak self] keyCode, modifiers, display in
+            let conflict = self?.checkHotkeyConflict(keyCode: keyCode, modifiers: modifiers)
+            if let conflict = conflict {
+                conflictLabel.stringValue = "⚠️ Conflict: \(conflict)"
+                keyField.stringValue = "\(display) ⚠️"
+            } else {
+                conflictLabel.stringValue = ""
+                keyField.stringValue = display
+            }
             UserDefaults.standard.set(Int(keyCode), forKey: "hotkeyKeyCode")
             UserDefaults.standard.set(Int(modifiers), forKey: "hotkeyModifiers")
             UserDefaults.standard.set(display, forKey: "hotkeyDisplay")
             self?.registerHotkey()
             self?.hotkeyLabel.title = "  Hotkey: \(display)"
-            keyField.stringValue = display
         }
         contentView.addSubview(keyField)
 
@@ -133,6 +132,47 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
         
         objc_setAssociatedObject(NSApp!, "settingsWindow", window, .OBJC_ASSOCIATION_RETAIN)
+    }
+
+    private func checkHotkeyConflict(keyCode: UInt32, modifiers: UInt32) -> String? {
+        let knownConflicts: [(UInt32, UInt32, String)] = [
+            (UInt32(kVK_F1), UInt32(controlKey), "macOS Keyboard Navigation"),
+            (UInt32(kVK_F1), UInt32(cmdKey), "macOS Menu Bar Focus"),
+            (UInt32(kVK_F2), UInt32(controlKey), "macOS Menu Bar Focus"),
+            (UInt32(kVK_F3), UInt32(controlKey), "macOS Mission Control"),
+            (UInt32(kVK_F4), UInt32(controlKey), "macOS App Windows"),
+            (UInt32(kVK_F5), UInt32(controlKey), "macOS Voice Over"),
+            (UInt32(kVK_Space), UInt32(cmdKey), "Spotlight"),
+            (UInt32(kVK_Space), UInt32(cmdKey | optionKey), "Finder Search"),
+            (UInt32(kVK_Tab), UInt32(cmdKey), "macOS App Switcher"),
+            (UInt32(kVK_ANSI_Q), UInt32(cmdKey), "Quit Application"),
+            (UInt32(kVK_ANSI_W), UInt32(cmdKey), "Close Window"),
+            (UInt32(kVK_ANSI_H), UInt32(cmdKey), "Hide Application"),
+            (UInt32(kVK_ANSI_M), UInt32(cmdKey), "Minimize Window"),
+            (UInt32(kVK_ANSI_C), UInt32(cmdKey), "Copy"),
+            (UInt32(kVK_ANSI_V), UInt32(cmdKey), "Paste"),
+            (UInt32(kVK_ANSI_X), UInt32(cmdKey), "Cut"),
+            (UInt32(kVK_ANSI_Z), UInt32(cmdKey), "Undo"),
+            (UInt32(kVK_ANSI_A), UInt32(cmdKey), "Select All"),
+        ]
+
+        for (code, mods, desc) in knownConflicts {
+            if keyCode == code && modifiers == mods {
+                return desc
+            }
+        }
+
+        var testRef: EventHotKeyRef?
+        let testID = EventHotKeyID(signature: OSType(0x54455354), id: 99)
+        let status = RegisterEventHotKey(keyCode, modifiers, testID, GetApplicationEventTarget(), 0, &testRef)
+        if status != noErr {
+            return "System shortcut (registration failed)"
+        }
+        if let ref = testRef {
+            UnregisterEventHotKey(ref)
+        }
+
+        return nil
     }
 
     private func savedHotkeyDisplay() -> String {
