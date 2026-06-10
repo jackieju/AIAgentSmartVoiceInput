@@ -68,11 +68,62 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let settingsItem = NSMenuItem(title: "Settings...", action: #selector(openSettings), keyEquivalent: ",")
         settingsItem.target = self
         menu.addItem(settingsItem)
+        let suggestedItem = NSMenuItem(title: "Suggested Hotkeys...", action: #selector(showSuggestedHotkeys), keyEquivalent: "")
+        suggestedItem.target = self
+        menu.addItem(suggestedItem)
         menu.addItem(NSMenuItem.separator())
         let quitItem = NSMenuItem(title: "Quit", action: #selector(quit), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)
         statusItem.menu = menu
+    }
+
+    @objc private func showSuggestedHotkeys() {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 340, height: 380),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "Suggested Hotkeys (No Conflicts)"
+        window.center()
+
+        let text = """
+        Option + F keys (safest):
+          Option+F1, Option+F2, Option+F3
+          Option+F4, Option+F5, Option+F6
+          Option+F7, Option+F8, Option+F9
+          Option+F10, Option+F11, Option+F12
+
+        Ctrl + F keys (F6-F12 safe):
+          Ctrl+F6, Ctrl+F7, Ctrl+F8
+          Ctrl+F9, Ctrl+F10, Ctrl+F11, Ctrl+F12
+          (Ctrl+F1~F5 used by macOS)
+
+        Cmd + F keys (F6-F12 mostly safe):
+          Cmd+F6, Cmd+F7, Cmd+F8
+          Cmd+F9, Cmd+F10, Cmd+F11, Cmd+F12
+          (Cmd+F1~F5 may conflict with macOS)
+
+        Cmd + number keys:
+          Cmd+5, Cmd+6, Cmd+7, Cmd+8, Cmd+9
+          (Cmd+1~4 often used by apps for tabs)
+
+        Option + letter keys (all safe):
+          Option+A through Option+Z
+        """
+
+        let textView = NSTextView(frame: NSRect(x: 15, y: 15, width: 310, height: 350))
+        textView.string = text
+        textView.isEditable = false
+        textView.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+        textView.backgroundColor = .windowBackgroundColor
+
+        window.contentView = textView
+        window.makeKeyAndOrderFront(nil)
+        window.level = .floating
+        NSApp.activate(ignoringOtherApps: true)
+        objc_setAssociatedObject(NSApp!, "suggestedWindow", window, .OBJC_ASSOCIATION_RETAIN)
     }
 
     @objc private func openSettings() {
@@ -176,7 +227,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func savedHotkeyDisplay() -> String {
-        UserDefaults.standard.string(forKey: "hotkeyDisplay") ?? "Ctrl+F1"
+        UserDefaults.standard.string(forKey: "hotkeyDisplay") ?? "Cmd+5"
     }
 
     private func registerHotkey() {
@@ -185,10 +236,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             currentHotKeyRef = nil
         }
 
+        // Default: Cmd+5 (keycode 23 = kVK_ANSI_5)
         let keyCode: UInt32 = UInt32(UserDefaults.standard.integer(forKey: "hotkeyKeyCode") != 0
-            ? UserDefaults.standard.integer(forKey: "hotkeyKeyCode") : 122)
+            ? UserDefaults.standard.integer(forKey: "hotkeyKeyCode") : kVK_ANSI_5)
         let modifiers: UInt32 = UInt32(UserDefaults.standard.integer(forKey: "hotkeyModifiers") != 0
-            ? UserDefaults.standard.integer(forKey: "hotkeyModifiers") : controlKey)
+            ? UserDefaults.standard.integer(forKey: "hotkeyModifiers") : cmdKey)
 
         let hotKeyID = EventHotKeyID(signature: OSType(0x56494E50), id: 1)
         let status = RegisterEventHotKey(keyCode, modifiers, hotKeyID, GetApplicationEventTarget(), 0, &currentHotKeyRef)
