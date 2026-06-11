@@ -33,6 +33,12 @@ struct VoiceInputApp {
     }
 }
 
+extension UserDefaults {
+    func contains(key: String) -> Bool {
+        return object(forKey: key) != nil
+    }
+}
+
 enum RecordingState {
     case idle
     case recording
@@ -53,7 +59,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         audioRecorder = AudioRecorder()
         checkPermissions()
         ensureDaemonRunning()
-        if UserDefaults.standard.bool(forKey: "showFloatingButton") {
+        if !UserDefaults.standard.contains(key: "showFloatingButton") || UserDefaults.standard.bool(forKey: "showFloatingButton") {
             floatingButton = FloatingRecordButton(delegate: self)
         }
     }
@@ -71,7 +77,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(NSMenuItem.separator())
         let showButtonItem = NSMenuItem(title: "Show Floating Button", action: #selector(toggleFloatingButton(_:)), keyEquivalent: "")
         showButtonItem.target = self
-        showButtonItem.state = UserDefaults.standard.bool(forKey: "showFloatingButton") ? .on : .off
+        showButtonItem.state = (!UserDefaults.standard.contains(key: "showFloatingButton") || UserDefaults.standard.bool(forKey: "showFloatingButton")) ? .on : .off
         menu.addItem(showButtonItem)
         menu.addItem(NSMenuItem.separator())
         let settingsItem = NSMenuItem(title: "Settings...", action: #selector(openSettings), keyEquivalent: ",")
