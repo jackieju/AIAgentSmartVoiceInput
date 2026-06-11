@@ -12,26 +12,17 @@ if CommandLine.arguments.count > 1 && CommandLine.arguments[1] == "--daemon" {
     
     print("inject-helper daemon running (polling), watching \(triggerFile)")
     
-    var lastActiveTTY: String?
-    var tickCount = 0
-    
     while true {
         if let text = try? String(contentsOfFile: triggerFile, encoding: .utf8),
            !text.isEmpty {
             try? "".write(toFile: triggerFile, atomically: false, encoding: .utf8)
-            injectNow(text, tty: lastActiveTTY)
+            injectNow(text)
         }
-        
-        tickCount += 1
-        if tickCount % 5 == 0 {
-            lastActiveTTY = getCurrentTerminalTTY()
-        }
-        
         Thread.sleep(forTimeInterval: 0.2)
     }
 } else {
     guard CommandLine.arguments.count > 1 else { exit(1) }
-    injectNow(CommandLine.arguments[1], tty: nil)
+    injectNow(CommandLine.arguments[1])
 }
 
 func getCurrentTerminalTTY() -> String? {
@@ -51,46 +42,16 @@ func getCurrentTerminalTTY() -> String? {
     return nil
 }
 
-func injectNow(_ text: String, tty: String?) {
+func injectNow(_ text: String) {
     let pasteboard = NSPasteboard.general
     let old = pasteboard.string(forType: .string)
     pasteboard.clearContents()
     pasteboard.setString(text, forType: .string)
 
-    let needsSwitch: Bool
-    if let tty = tty {
-        let currentTTY = getCurrentTerminalTTY()
-        needsSwitch = (currentTTY != tty)
-        if needsSwitch {
-            let script = """
-            tell application "Terminal"
-                activate
-                repeat with w in windows
-                    repeat with t in tabs of w
-                        if tty of t is "\(tty)" then
-                            set selected tab of w to t
-                            set index of w to 1
-                            return
-                        end if
-                    end repeat
-                end repeat
-            end tell
-            """
-            let proc = Process()
-            proc.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-            proc.arguments = ["-e", script]
-            proc.standardError = FileHandle.nullDevice
-            try? proc.run()
-            proc.waitUntilExit()
-            Thread.sleep(forTimeInterval: 0.3)
-        }
-    } else {
-        needsSwitch = false
-        if let termApp = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == "com.apple.Terminal" }) {
-            termApp.activate()
-            Thread.sleep(forTimeInterval: 0.3)
-        }
+    if let termApp = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == "com.apple.Terminal" }) {
+        termApp.activate()
     }
+    Thread.sleep(forTimeInterval: 0.3)
 
     let source = CGEventSource(stateID: .hidSystemState)
     let vDown = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_ANSI_V), keyDown: true)

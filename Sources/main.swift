@@ -692,7 +692,7 @@ class AudioRecorder {
 
 class FloatingRecordButton {
     private var panel: NSPanel!
-    private var button: NSButton!
+    private var button: DraggableButton!
     private weak var delegate: AppDelegate?
     private var trackingTimer: Timer?
 
@@ -705,7 +705,7 @@ class FloatingRecordButton {
     private func setupPanel() {
         panel = NSPanel(
             contentRect: NSRect(x: 0, y: 0, width: 44, height: 44),
-            styleMask: [.borderless, .nonactivatingPanel],
+            styleMask: [.borderless, .nonactivatingPanel, .utilityWindow],
             backing: .buffered,
             defer: false
         )
@@ -713,22 +713,20 @@ class FloatingRecordButton {
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = true
-        panel.collectionBehavior = [.canJoinAllSpaces, .transient]
+        panel.hidesOnDeactivate = false
+        panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
 
-        button = NSButton(frame: NSRect(x: 2, y: 2, width: 40, height: 40))
-        button.bezelStyle = .circular
-        button.title = "🎤"
-        button.font = NSFont.systemFont(ofSize: 20)
-        button.target = self
-        button.action = #selector(buttonClicked)
-        panel.contentView?.addSubview(button)
+        let dragButton = DraggableButton(frame: NSRect(x: 0, y: 0, width: 44, height: 44))
+        dragButton.title = "🎤"
+        dragButton.onClick = { [weak self] in
+            self?.delegate?.toggleRecording()
+        }
+        panel.contentView?.addSubview(dragButton)
+        button = dragButton
 
-        positionNearTerminal()
-        panel.orderFront(nil)
-    }
-
-    @objc private func buttonClicked() {
-        delegate?.toggleRecording()
+        let screen = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+        panel.setFrameOrigin(NSPoint(x: screen.maxX - 60, y: screen.maxY - 60))
+        panel.orderFrontRegardless()
     }
 
     func updateState(_ state: RecordingState) {
@@ -780,6 +778,63 @@ class FloatingRecordButton {
         let y = screenHeight - position.y - 60
         panel.setFrameOrigin(NSPoint(x: x, y: y))
     }
+}
+
+class DraggableButton: NSView {
+    private var dragOrigin: NSPoint?
+    private var isDragging = false
+    var title: String = "🎤" { didSet { needsDisplay = true } }
+    var onClick: (() -> Void)?
+
+    override func draw(_ dirtyRect: NSRect) {
+        let circle = NSBezierPath(ovalIn: bounds.insetBy(dx: 2, dy: 2))
+        NSColor.controlBackgroundColor.setFill()
+        circle.fill()
+        NSColor.separatorColor.setStroke()
+        circle.lineWidth = 1
+        circle.stroke()
+
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 20),
+        ]
+        let size = title.size(withAttributes: attrs)
+        let point = NSPoint(x: (bounds.width - size.width) / 2, y: (bounds.height - size.height) / 2)
+        title.draw(at: point, withAttributes: attrs)
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        dragOrigin = NSEvent.mouseLocation
+        isDragging = false
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard let origin = dragOrigin, let window = self.window else { return }
+        let current = NSEvent.mouseLocation
+        let dx = current.x - origin.x
+        let dy = current.y - origin.y
+
+        if !isDragging && (abs(dx) > 3 || abs(dy) > 3) {
+            isDragging = true
+        }
+
+        if isDragging {
+            var frame = window.frame
+            frame.origin.x += dx
+            frame.origin.y += dy
+            window.setFrameOrigin(frame.origin)
+            dragOrigin = current
+        }
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        if !isDragging {
+            onClick?()
+        }
+        dragOrigin = nil
+        isDragging = false
+    }
+
+    override var acceptsFirstResponder: Bool { true }
 }
 
 class HotkeyField: NSTextField {
