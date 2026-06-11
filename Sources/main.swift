@@ -746,7 +746,7 @@ class FloatingRecordButton {
 
     private func setupPanel() {
         let size = CGFloat(UserDefaults.standard.double(forKey: "floatingButtonSize") > 0
-            ? UserDefaults.standard.double(forKey: "floatingButtonSize") : 60)
+            ? UserDefaults.standard.double(forKey: "floatingButtonSize") : 100)
 
         panel = NSPanel(
             contentRect: NSRect(x: 0, y: 0, width: size, height: size),
@@ -796,7 +796,7 @@ class FloatingRecordButton {
 
     func resize(by delta: CGFloat) {
         var size = panel.frame.size.width + delta
-        size = max(30, min(100, size))
+        size = max(30, min(200, size))
         UserDefaults.standard.set(Double(size), forKey: "floatingButtonSize")
         let origin = panel.frame.origin
         panel.setFrame(NSRect(x: origin.x, y: origin.y, width: size, height: size), display: true)
