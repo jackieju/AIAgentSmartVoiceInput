@@ -26,6 +26,11 @@ if CommandLine.arguments.count > 1 && CommandLine.arguments[1] == "--daemon" {
 }
 
 func injectNow(_ text: String) {
+    if let termApp = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == "com.apple.Terminal" }) {
+        termApp.activate()
+        Thread.sleep(forTimeInterval: 0.3)
+    }
+
     let pasteboard = NSPasteboard.general
     let old = pasteboard.string(forType: .string)
     pasteboard.clearContents()
