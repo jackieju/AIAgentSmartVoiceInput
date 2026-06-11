@@ -827,6 +827,9 @@ class DraggableButton: NSView {
         let circle = NSBezierPath(ovalIn: bounds.insetBy(dx: 2, dy: 2))
         NSColor.black.withAlphaComponent(0.3).setFill()
         circle.fill()
+        NSColor.white.withAlphaComponent(0.5).setStroke()
+        circle.lineWidth = 1.5
+        circle.stroke()
 
         let attrs: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: 24),
