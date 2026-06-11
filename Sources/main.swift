@@ -824,15 +824,8 @@ class DraggableButton: NSView {
     var onClick: (() -> Void)?
 
     override func draw(_ dirtyRect: NSRect) {
-        let circle = NSBezierPath(ovalIn: bounds.insetBy(dx: 2, dy: 2))
-        NSColor.controlBackgroundColor.setFill()
-        circle.fill()
-        NSColor.separatorColor.setStroke()
-        circle.lineWidth = 1
-        circle.stroke()
-
         let attrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: 20),
+            .font: NSFont.systemFont(ofSize: 24),
         ]
         let size = title.size(withAttributes: attrs)
         let point = NSPoint(x: (bounds.width - size.width) / 2, y: (bounds.height - size.height) / 2)
