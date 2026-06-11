@@ -412,7 +412,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
         let rms = sqrt(sumSquares / Float(buffer.frameLength))
         debugLog("Audio RMS: \(rms)")
-        return rms > 0.005
+        return rms > 0.003
     }
 
     private func transcribe(wavURL: URL) -> String? {

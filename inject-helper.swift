@@ -12,52 +12,58 @@ if CommandLine.arguments.count > 1 && CommandLine.arguments[1] == "--daemon" {
     
     print("inject-helper daemon running (polling), watching \(triggerFile)")
     
+    var lastActiveTTY: String?
+    var tickCount = 0
+    
     while true {
         if let text = try? String(contentsOfFile: triggerFile, encoding: .utf8),
            !text.isEmpty {
             try? "".write(toFile: triggerFile, atomically: false, encoding: .utf8)
-            injectNow(text)
+            injectNow(text, tty: lastActiveTTY)
         }
+        
+        tickCount += 1
+        if tickCount % 5 == 0 {
+            lastActiveTTY = getCurrentTerminalTTY()
+        }
+        
         Thread.sleep(forTimeInterval: 0.2)
     }
 } else {
     guard CommandLine.arguments.count > 1 else { exit(1) }
-    injectNow(CommandLine.arguments[1])
+    injectNow(CommandLine.arguments[1], tty: nil)
 }
 
-func injectNow(_ text: String) {
-    let pidFile = "/tmp/voiceinput_frontapp.pid"
-    var targetTTY: String?
-    
-    if let pidStr = try? String(contentsOfFile: pidFile, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines),
-       let pid = Int32(pidStr) {
-        let proc = Process()
-        proc.executableURL = URL(fileURLWithPath: "/bin/ps")
-        proc.arguments = ["-p", "\(pid)", "-o", "tty="]
-        let pipe = Pipe()
-        proc.standardOutput = pipe
-        proc.standardError = FileHandle.nullDevice
-        try? proc.run()
-        proc.waitUntilExit()
-        let ttyData = pipe.fileHandleForReading.readDataToEndOfFile()
-        if let tty = String(data: ttyData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines), !tty.isEmpty {
-            targetTTY = "/dev/" + tty
-        }
+func getCurrentTerminalTTY() -> String? {
+    let proc = Process()
+    proc.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+    proc.arguments = ["-e", "tell application \"Terminal\" to return tty of selected tab of front window"]
+    let pipe = Pipe()
+    proc.standardOutput = pipe
+    proc.standardError = FileHandle.nullDevice
+    try? proc.run()
+    proc.waitUntilExit()
+    let data = pipe.fileHandleForReading.readDataToEndOfFile()
+    let tty = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+    if let tty = tty, !tty.isEmpty, tty != "missing value" {
+        return tty
     }
+    return nil
+}
 
+func injectNow(_ text: String, tty: String?) {
     let pasteboard = NSPasteboard.general
     let old = pasteboard.string(forType: .string)
     pasteboard.clearContents()
     pasteboard.setString(text, forType: .string)
 
-    if let tty = targetTTY {
+    if let tty = tty {
         let script = """
         tell application "Terminal"
             activate
-            set targetTTY to "\(tty)"
             repeat with w in windows
                 repeat with t in tabs of w
-                    if tty of t is targetTTY then
+                    if tty of t is "\(tty)" then
                         set selected tab of w to t
                         set index of w to 1
                         return
