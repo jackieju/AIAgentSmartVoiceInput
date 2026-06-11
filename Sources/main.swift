@@ -45,6 +45,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var audioRecorder: AudioRecorder?
     private var currentHotKeyRef: EventHotKeyRef?
     private var hotkeyLabel: NSMenuItem!
+    private var floatingButton: FloatingRecordButton?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupStatusItem()
@@ -52,6 +53,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         audioRecorder = AudioRecorder()
         checkPermissions()
         ensureDaemonRunning()
+        floatingButton = FloatingRecordButton(delegate: self)
     }
 
     private func setupStatusItem() {
@@ -339,9 +341,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         case .transcribing:
             button.title = "⏳"
         }
+        floatingButton?.updateState(state)
     }
 
-    private func toggleRecording() {
+    func toggleRecording() {
         switch state {
         case .idle:
             startRecording()
@@ -684,6 +687,98 @@ class AudioRecorder {
         audioEngine = nil
         outputFile = nil
         return outputURL
+    }
+}
+
+class FloatingRecordButton {
+    private var panel: NSPanel!
+    private var button: NSButton!
+    private weak var delegate: AppDelegate?
+    private var trackingTimer: Timer?
+
+    init(delegate: AppDelegate) {
+        self.delegate = delegate
+        setupPanel()
+        startTracking()
+    }
+
+    private func setupPanel() {
+        panel = NSPanel(
+            contentRect: NSRect(x: 0, y: 0, width: 44, height: 44),
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        panel.level = .floating
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = true
+        panel.collectionBehavior = [.canJoinAllSpaces, .transient]
+
+        button = NSButton(frame: NSRect(x: 2, y: 2, width: 40, height: 40))
+        button.bezelStyle = .circular
+        button.title = "🎤"
+        button.font = NSFont.systemFont(ofSize: 20)
+        button.target = self
+        button.action = #selector(buttonClicked)
+        panel.contentView?.addSubview(button)
+
+        positionNearTerminal()
+        panel.orderFront(nil)
+    }
+
+    @objc private func buttonClicked() {
+        delegate?.toggleRecording()
+    }
+
+    func updateState(_ state: RecordingState) {
+        switch state {
+        case .idle:
+            button.title = "🎤"
+        case .recording:
+            button.title = "🔴"
+        case .transcribing:
+            button.title = "⏳"
+        }
+    }
+
+    private func startTracking() {
+        trackingTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            self?.positionNearTerminal()
+        }
+    }
+
+    private func positionNearTerminal() {
+        guard let termApp = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == "com.apple.Terminal" }),
+              termApp.isActive else {
+            return
+        }
+
+        let appRef = AXUIElementCreateApplication(termApp.processIdentifier)
+        var windowRef: AnyObject?
+        AXUIElementCopyAttributeValue(appRef, kAXFocusedWindowAttribute as CFString, &windowRef)
+        guard let window = windowRef else { return }
+
+        var positionRef: AnyObject?
+        var sizeRef: AnyObject?
+        AXUIElementCopyAttributeValue(window as! AXUIElement, kAXPositionAttribute as CFString, &positionRef)
+        AXUIElementCopyAttributeValue(window as! AXUIElement, kAXSizeAttribute as CFString, &sizeRef)
+
+        var position = CGPoint.zero
+        var size = CGSize.zero
+        if let posRef = positionRef {
+            AXValueGetValue(posRef as! AXValue, .cgPoint, &position)
+        }
+        if let sRef = sizeRef {
+            AXValueGetValue(sRef as! AXValue, .cgSize, &size)
+        }
+
+        guard size.width > 0 else { return }
+
+        let screenHeight = NSScreen.main?.frame.height ?? 900
+        let x = position.x + size.width - 54
+        let y = screenHeight - position.y - 60
+        panel.setFrameOrigin(NSPoint(x: x, y: y))
     }
 }
 

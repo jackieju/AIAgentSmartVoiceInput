@@ -57,33 +57,40 @@ func injectNow(_ text: String, tty: String?) {
     pasteboard.clearContents()
     pasteboard.setString(text, forType: .string)
 
+    let needsSwitch: Bool
     if let tty = tty {
-        let script = """
-        tell application "Terminal"
-            activate
-            repeat with w in windows
-                repeat with t in tabs of w
-                    if tty of t is "\(tty)" then
-                        set selected tab of w to t
-                        set index of w to 1
-                        return
-                    end if
+        let currentTTY = getCurrentTerminalTTY()
+        needsSwitch = (currentTTY != tty)
+        if needsSwitch {
+            let script = """
+            tell application "Terminal"
+                activate
+                repeat with w in windows
+                    repeat with t in tabs of w
+                        if tty of t is "\(tty)" then
+                            set selected tab of w to t
+                            set index of w to 1
+                            return
+                        end if
+                    end repeat
                 end repeat
-            end repeat
-        end tell
-        """
-        let proc = Process()
-        proc.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-        proc.arguments = ["-e", script]
-        proc.standardError = FileHandle.nullDevice
-        try? proc.run()
-        proc.waitUntilExit()
+            end tell
+            """
+            let proc = Process()
+            proc.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+            proc.arguments = ["-e", script]
+            proc.standardError = FileHandle.nullDevice
+            try? proc.run()
+            proc.waitUntilExit()
+            Thread.sleep(forTimeInterval: 0.3)
+        }
     } else {
+        needsSwitch = false
         if let termApp = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == "com.apple.Terminal" }) {
             termApp.activate()
+            Thread.sleep(forTimeInterval: 0.3)
         }
     }
-    Thread.sleep(forTimeInterval: 0.5)
 
     let source = CGEventSource(stateID: .hidSystemState)
     let vDown = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_ANSI_V), keyDown: true)
@@ -93,14 +100,14 @@ func injectNow(_ text: String, tty: String?) {
     vDown?.post(tap: .cghidEventTap)
     vUp?.post(tap: .cghidEventTap)
 
-    Thread.sleep(forTimeInterval: 1.0)
+    Thread.sleep(forTimeInterval: 0.3)
 
     let enterDown = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_Return), keyDown: true)
     let enterUp = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_Return), keyDown: false)
     enterDown?.post(tap: .cghidEventTap)
     enterUp?.post(tap: .cghidEventTap)
 
-    Thread.sleep(forTimeInterval: 0.3)
+    Thread.sleep(forTimeInterval: 0.2)
 
     pasteboard.clearContents()
     if let old = old {
