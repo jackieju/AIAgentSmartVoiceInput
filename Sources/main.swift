@@ -354,6 +354,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func startRecording() {
         guard let recorder = audioRecorder else { return }
+
+        if let frontApp = NSWorkspace.shared.frontmostApplication {
+            let pidStr = "\(frontApp.processIdentifier)"
+            try? pidStr.write(toFile: "/tmp/voiceinput_frontapp.pid", atomically: false, encoding: .utf8)
+        }
+
         do {
             try recorder.startRecording()
             state = .recording

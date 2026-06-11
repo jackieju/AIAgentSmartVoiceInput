@@ -26,15 +26,58 @@ if CommandLine.arguments.count > 1 && CommandLine.arguments[1] == "--daemon" {
 }
 
 func injectNow(_ text: String) {
-    if let termApp = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == "com.apple.Terminal" }) {
-        termApp.activate()
-        Thread.sleep(forTimeInterval: 0.3)
+    let pidFile = "/tmp/voiceinput_frontapp.pid"
+    var targetTTY: String?
+    
+    if let pidStr = try? String(contentsOfFile: pidFile, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines),
+       let pid = Int32(pidStr) {
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/bin/ps")
+        proc.arguments = ["-p", "\(pid)", "-o", "tty="]
+        let pipe = Pipe()
+        proc.standardOutput = pipe
+        proc.standardError = FileHandle.nullDevice
+        try? proc.run()
+        proc.waitUntilExit()
+        let ttyData = pipe.fileHandleForReading.readDataToEndOfFile()
+        if let tty = String(data: ttyData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines), !tty.isEmpty {
+            targetTTY = "/dev/" + tty
+        }
     }
 
     let pasteboard = NSPasteboard.general
     let old = pasteboard.string(forType: .string)
     pasteboard.clearContents()
     pasteboard.setString(text, forType: .string)
+
+    if let tty = targetTTY {
+        let script = """
+        tell application "Terminal"
+            activate
+            set targetTTY to "\(tty)"
+            repeat with w in windows
+                repeat with t in tabs of w
+                    if tty of t is targetTTY then
+                        set selected tab of w to t
+                        set index of w to 1
+                        return
+                    end if
+                end repeat
+            end repeat
+        end tell
+        """
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        proc.arguments = ["-e", script]
+        proc.standardError = FileHandle.nullDevice
+        try? proc.run()
+        proc.waitUntilExit()
+    } else {
+        if let termApp = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == "com.apple.Terminal" }) {
+            termApp.activate()
+        }
+    }
+    Thread.sleep(forTimeInterval: 0.5)
 
     let source = CGEventSource(stateID: .hidSystemState)
     let vDown = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_ANSI_V), keyDown: true)
