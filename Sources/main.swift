@@ -53,7 +53,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         audioRecorder = AudioRecorder()
         checkPermissions()
         ensureDaemonRunning()
-        floatingButton = FloatingRecordButton(delegate: self)
+        if UserDefaults.standard.bool(forKey: "showFloatingButton") {
+            floatingButton = FloatingRecordButton(delegate: self)
+        }
     }
 
     private func setupStatusItem() {
@@ -67,6 +69,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(hotkeyLabel)
         menu.addItem(NSMenuItem(title: "  Cancel: Escape", action: nil, keyEquivalent: ""))
         menu.addItem(NSMenuItem.separator())
+        let showButtonItem = NSMenuItem(title: "Show Floating Button", action: #selector(toggleFloatingButton(_:)), keyEquivalent: "")
+        showButtonItem.target = self
+        showButtonItem.state = UserDefaults.standard.bool(forKey: "showFloatingButton") ? .on : .off
+        menu.addItem(showButtonItem)
+        menu.addItem(NSMenuItem.separator())
         let settingsItem = NSMenuItem(title: "Settings...", action: #selector(openSettings), keyEquivalent: ",")
         settingsItem.target = self
         menu.addItem(settingsItem)
@@ -75,6 +82,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         quitItem.target = self
         menu.addItem(quitItem)
         statusItem.menu = menu
+    }
+
+    @objc private func toggleFloatingButton(_ sender: NSMenuItem) {
+        let show = sender.state == .off
+        sender.state = show ? .on : .off
+        UserDefaults.standard.set(show, forKey: "showFloatingButton")
+        if show {
+            if floatingButton == nil {
+                floatingButton = FloatingRecordButton(delegate: self)
+            } else {
+                floatingButton?.show()
+            }
+        } else {
+            floatingButton?.hide()
+        }
     }
 
     @objc private func showSuggestedHotkeys() {
@@ -738,6 +760,15 @@ class FloatingRecordButton {
         case .transcribing:
             button.title = "⏳"
         }
+        button.needsDisplay = true
+    }
+
+    func show() {
+        panel.orderFrontRegardless()
+    }
+
+    func hide() {
+        panel.orderOut(nil)
     }
 
     private func startTracking() {
