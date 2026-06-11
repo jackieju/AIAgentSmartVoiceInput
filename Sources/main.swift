@@ -824,6 +824,10 @@ class DraggableButton: NSView {
     var onClick: (() -> Void)?
 
     override func draw(_ dirtyRect: NSRect) {
+        let circle = NSBezierPath(ovalIn: bounds.insetBy(dx: 2, dy: 2))
+        NSColor.black.withAlphaComponent(0.3).setFill()
+        circle.fill()
+
         let attrs: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: 24),
         ]
