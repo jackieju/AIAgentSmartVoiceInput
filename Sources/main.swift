@@ -79,6 +79,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         showButtonItem.target = self
         showButtonItem.state = (!UserDefaults.standard.contains(key: "showFloatingButton") || UserDefaults.standard.bool(forKey: "showFloatingButton")) ? .on : .off
         menu.addItem(showButtonItem)
+        let enlargeItem = NSMenuItem(title: "Enlarge Button", action: #selector(enlargeButton), keyEquivalent: "+")
+        enlargeItem.target = self
+        menu.addItem(enlargeItem)
+        let shrinkItem = NSMenuItem(title: "Shrink Button", action: #selector(shrinkButton), keyEquivalent: "-")
+        shrinkItem.target = self
+        menu.addItem(shrinkItem)
         menu.addItem(NSMenuItem.separator())
         let settingsItem = NSMenuItem(title: "Settings...", action: #selector(openSettings), keyEquivalent: ",")
         settingsItem.target = self
@@ -103,6 +109,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             floatingButton?.hide()
         }
+    }
+
+    @objc private func enlargeButton() {
+        floatingButton?.resize(by: 10)
+    }
+
+    @objc private func shrinkButton() {
+        floatingButton?.resize(by: -10)
     }
 
     @objc private func showSuggestedHotkeys() {
@@ -731,8 +745,11 @@ class FloatingRecordButton {
     }
 
     private func setupPanel() {
+        let size = CGFloat(UserDefaults.standard.double(forKey: "floatingButtonSize") > 0
+            ? UserDefaults.standard.double(forKey: "floatingButtonSize") : 60)
+
         panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 44, height: 44),
+            contentRect: NSRect(x: 0, y: 0, width: size, height: size),
             styleMask: [.borderless, .nonactivatingPanel, .utilityWindow],
             backing: .buffered,
             defer: false
@@ -744,7 +761,7 @@ class FloatingRecordButton {
         panel.hidesOnDeactivate = false
         panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
 
-        let dragButton = DraggableButton(frame: NSRect(x: 0, y: 0, width: 44, height: 44))
+        let dragButton = DraggableButton(frame: NSRect(x: 0, y: 0, width: size, height: size))
         dragButton.title = "🎤"
         dragButton.onClick = { [weak self] in
             self?.delegate?.toggleRecording()
@@ -775,6 +792,16 @@ class FloatingRecordButton {
 
     func hide() {
         panel.orderOut(nil)
+    }
+
+    func resize(by delta: CGFloat) {
+        var size = panel.frame.size.width + delta
+        size = max(30, min(100, size))
+        UserDefaults.standard.set(Double(size), forKey: "floatingButtonSize")
+        let origin = panel.frame.origin
+        panel.setFrame(NSRect(x: origin.x, y: origin.y, width: size, height: size), display: true)
+        button.frame = NSRect(x: 0, y: 0, width: size, height: size)
+        button.needsDisplay = true
     }
 
     private func startTracking() {
@@ -832,7 +859,7 @@ class DraggableButton: NSView {
         circle.stroke()
 
         let attrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: 24),
+            .font: NSFont.systemFont(ofSize: bounds.width * 0.45),
         ]
         let size = title.size(withAttributes: attrs)
         let point = NSPoint(x: (bounds.width - size.width) / 2, y: (bounds.height - size.height) / 2)
