@@ -169,7 +169,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func openSettings() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 360, height: 340),
+            contentRect: NSRect(x: 0, y: 0, width: 360, height: 430),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -179,7 +179,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         let contentView = NSView(frame: window.contentView!.bounds)
 
-        var y = 305
+        var y = 395
 
         let hotkeyTitle = NSTextField(labelWithString: "Hotkey:")
         hotkeyTitle.frame = NSRect(x: 20, y: y, width: 320, height: 18)
@@ -268,13 +268,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         contentView.addSubview(langTitle)
         y -= 28
 
-        let langPopup = NSPopUpButton(frame: NSRect(x: 20, y: y, width: 320, height: 26))
-        langPopup.addItems(withTitles: ["Auto Detect", "Chinese + English", "Chinese Only", "English Only"])
-        let savedLang = UserDefaults.standard.integer(forKey: "recognitionLanguage")
-        langPopup.selectItem(at: savedLang)
-        langPopup.target = self
-        langPopup.action = #selector(languageChanged(_:))
-        contentView.addSubview(langPopup)
+        let languages = ["auto", "zh", "en", "ja", "ko", "fr", "de", "es", "it", "pt", "ru", "ar", "hi", "th", "vi"]
+        let langNames = ["Auto Detect", "Chinese", "English", "Japanese", "Korean", "French", "German", "Spanish", "Italian", "Portuguese", "Russian", "Arabic", "Hindi", "Thai", "Vietnamese"]
+        let savedLangs = UserDefaults.standard.stringArray(forKey: "selectedLanguages") ?? ["auto"]
+
+        let scrollView = NSScrollView(frame: NSRect(x: 20, y: y - 70, width: 320, height: 80))
+        scrollView.hasVerticalScroller = true
+        scrollView.borderType = .bezelBorder
+        let langList = NSView(frame: NSRect(x: 0, y: 0, width: 300, height: CGFloat(languages.count * 20)))
+
+        for (i, lang) in languages.enumerated() {
+            let cb = NSButton(checkboxWithTitle: langNames[i], target: self, action: #selector(langCheckboxChanged(_:)))
+            cb.frame = NSRect(x: 4, y: langList.frame.height - CGFloat((i + 1) * 20), width: 280, height: 18)
+            cb.tag = i
+            cb.state = savedLangs.contains(lang) ? .on : .off
+            langList.addSubview(cb)
+        }
+        scrollView.documentView = langList
+        contentView.addSubview(scrollView)
 
         window.contentView = contentView
         window.makeKeyAndOrderFront(nil)
@@ -289,9 +300,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         debugLog("Provider changed to: \(sender.titleOfSelectedItem ?? "")")
     }
 
-    @objc private func languageChanged(_ sender: NSPopUpButton) {
-        UserDefaults.standard.set(sender.indexOfSelectedItem, forKey: "recognitionLanguage")
-        debugLog("Language changed to: \(sender.titleOfSelectedItem ?? "")")
+    @objc private func langCheckboxChanged(_ sender: NSButton) {
+        let languages = ["auto", "zh", "en", "ja", "ko", "fr", "de", "es", "it", "pt", "ru", "ar", "hi", "th", "vi"]
+        var saved = UserDefaults.standard.stringArray(forKey: "selectedLanguages") ?? ["auto"]
+        let lang = languages[sender.tag]
+
+        if sender.state == .on {
+            if lang == "auto" {
+                saved = ["auto"]
+            } else {
+                saved.removeAll { $0 == "auto" }
+                if !saved.contains(lang) { saved.append(lang) }
+            }
+        } else {
+            saved.removeAll { $0 == lang }
+            if saved.isEmpty { saved = ["auto"] }
+        }
+        UserDefaults.standard.set(saved, forKey: "selectedLanguages")
+        debugLog("Languages: \(saved)")
     }
 
     @objc private func apiKeyChanged(_ sender: NSTextField) {
@@ -414,36 +440,56 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private var previousVolume: String?
+    private var didPausePlayback = false
 
     private func muteSystemAudio() {
-        let proc = Process()
-        proc.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-        proc.arguments = ["-e", "output volume of (get volume settings)"]
+        let playingCheck = Process()
+        playingCheck.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        playingCheck.arguments = ["-e", "tell application \"System Events\" to return (name of every process whose background only is false) as text"]
         let pipe = Pipe()
-        proc.standardOutput = pipe
-        proc.standardError = FileHandle.nullDevice
-        try? proc.run()
-        proc.waitUntilExit()
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        previousVolume = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        playingCheck.standardOutput = pipe
+        playingCheck.standardError = FileHandle.nullDevice
+        try? playingCheck.run()
+        playingCheck.waitUntilExit()
 
-        let mute = Process()
-        mute.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-        mute.arguments = ["-e", "set volume output volume 0"]
-        try? mute.run()
-        mute.waitUntilExit()
-        debugLog("System audio muted (was \(previousVolume ?? "?"))")
+        simulateMediaKey(keyType: 16)
+        didPausePlayback = true
+        debugLog("Media: Play/Pause pressed (pause)")
     }
 
     private func unmuteSystemAudio() {
-        guard let vol = previousVolume, !vol.isEmpty else { return }
-        let proc = Process()
-        proc.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-        proc.arguments = ["-e", "set volume output volume \(vol)"]
-        try? proc.run()
-        proc.waitUntilExit()
-        debugLog("System audio restored to \(vol)")
-        previousVolume = nil
+        guard didPausePlayback else { return }
+        simulateMediaKey(keyType: 16)
+        didPausePlayback = false
+        debugLog("Media: Play/Pause pressed (resume)")
+    }
+
+    private func simulateMediaKey(keyType: Int32) {
+        let keyDown = NSEvent.otherEvent(
+            with: .systemDefined,
+            location: .zero,
+            modifierFlags: NSEvent.ModifierFlags(rawValue: 0xa00),
+            timestamp: 0,
+            windowNumber: 0,
+            context: nil,
+            subtype: 8,
+            data1: Int((keyType << 16) | (0xa << 8)),
+            data2: -1
+        )
+        keyDown?.cgEvent?.post(tap: .cghidEventTap)
+
+        let keyUp = NSEvent.otherEvent(
+            with: .systemDefined,
+            location: .zero,
+            modifierFlags: NSEvent.ModifierFlags(rawValue: 0xb00),
+            timestamp: 0,
+            windowNumber: 0,
+            context: nil,
+            subtype: 8,
+            data1: Int((keyType << 16) | (0xb << 8)),
+            data2: -1
+        )
+        keyUp?.cgEvent?.post(tap: .cghidEventTap)
     }
 
     private func updateStatusIcon() {
@@ -582,13 +628,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return nil
         }
 
-        let langSetting = UserDefaults.standard.integer(forKey: "recognitionLanguage")
+        let savedLangs = UserDefaults.standard.stringArray(forKey: "selectedLanguages") ?? ["auto"]
         let langArg: String
-        switch langSetting {
-        case 1: langArg = "zh"
-        case 2: langArg = "zh"
-        case 3: langArg = "en"
-        default: langArg = "auto"
+        if savedLangs.contains("auto") || savedLangs.count > 1 {
+            langArg = "auto"
+        } else {
+            langArg = savedLangs.first ?? "auto"
         }
 
         let process = Process()
