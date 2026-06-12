@@ -22,5 +22,7 @@
 	<string>VoiceInput needs to control System Events to paste transcribed text into Terminal.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>VoiceInput needs microphone access to record your voice for transcription.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>VoiceInput uses speech recognition for realtime voice mode keyword detection.</string>
 </dict>
 </plist>

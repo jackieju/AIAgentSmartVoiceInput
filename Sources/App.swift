@@ -53,6 +53,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var escHotKeyRef: EventHotKeyRef?
     private var hotkeyLabel: NSMenuItem!
     private var floatingButton: FloatingRecordButton?
+    private var realtimeMode: RealtimeVoiceMode?
+    private var realtimeMenuItem: NSMenuItem!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupStatusItem()
@@ -90,10 +92,57 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         settingsItem.target = self
         menu.addItem(settingsItem)
         menu.addItem(NSMenuItem.separator())
+        realtimeMenuItem = NSMenuItem(title: "Realtime Voice Mode", action: #selector(toggleRealtimeMode), keyEquivalent: "r")
+        realtimeMenuItem.target = self
+        menu.addItem(realtimeMenuItem)
+        menu.addItem(NSMenuItem.separator())
         let quitItem = NSMenuItem(title: "Quit", action: #selector(quit), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)
         statusItem.menu = menu
+    }
+
+    @objc private func toggleRealtimeMode() {
+        if realtimeMode == nil {
+            let triggers = UserDefaults.standard.stringArray(forKey: "realtimeTriggerKeywords") ?? ["发送", "回车", "enter"]
+            let exits = UserDefaults.standard.stringArray(forKey: "realtimeExitKeywords") ?? ["退出", "exit"]
+            let wakes = UserDefaults.standard.stringArray(forKey: "realtimeWakeKeywords") ?? ["hey voice"]
+
+            realtimeMode = RealtimeVoiceMode(
+                triggerKeywords: triggers,
+                exitKeywords: exits,
+                wakeKeywords: wakes,
+                onSubmit: { [weak self] text in
+                    self?.injectText(text)
+                },
+                onStateChange: { [weak self] newState in
+                    DispatchQueue.main.async {
+                        self?.updateRealtimeUI(newState)
+                    }
+                }
+            )
+            realtimeMode?.start()
+            realtimeMenuItem.title = "Stop Realtime Mode"
+        } else {
+            realtimeMode?.stop()
+            realtimeMode = nil
+            realtimeMenuItem.title = "Realtime Voice Mode"
+            statusItem.button?.title = "🎤"
+            floatingButton?.updateState(.idle)
+        }
+    }
+
+    private func updateRealtimeUI(_ voiceState: RealtimeVoiceState) {
+        switch voiceState {
+        case .idle:
+            statusItem.button?.title = "🎤"
+        case .wakeListen:
+            statusItem.button?.title = "👂"
+        case .active:
+            statusItem.button?.title = "🗣️"
+        case .transcribing:
+            statusItem.button?.title = "⏳"
+        }
     }
 
     @objc private func toggleFloatingButton(_ sender: NSMenuItem) {
