@@ -411,12 +411,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func cancelRecording() {
-        guard state == .recording, let recorder = audioRecorder else { return }
-        _ = recorder.stopRecording()
-        unmuteSystemAudio()
-        state = .idle
-        updateStatusIcon()
-        debugLog("Recording cancelled by Escape")
+        if state == .recording, let recorder = audioRecorder {
+            _ = recorder.stopRecording()
+            unmuteSystemAudio()
+            state = .idle
+            updateStatusIcon()
+            debugLog("Recording cancelled by Escape")
+        } else {
+            let proc = Process()
+            proc.executableURL = URL(fileURLWithPath: "/usr/bin/killall")
+            proc.arguments = ["say"]
+            proc.standardError = FileHandle.nullDevice
+            try? proc.run()
+            proc.waitUntilExit()
+            debugLog("TTS stopped by Escape")
+        }
     }
 
     private func saveTargetTTY() {
