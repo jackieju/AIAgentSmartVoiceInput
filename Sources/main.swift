@@ -262,15 +262,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         contentView.addSubview(apiHint)
         y -= 30
 
-        let langTitle = NSTextField(labelWithString: "Recognition Language:")
+        let langTitle = NSTextField(labelWithString: "Recognition Language (select one for best accuracy):")
         langTitle.frame = NSRect(x: 20, y: y, width: 320, height: 18)
         langTitle.font = NSFont.boldSystemFont(ofSize: 12)
         contentView.addSubview(langTitle)
         y -= 28
 
-        let languages = ["auto", "zh", "en", "ja", "ko", "fr", "de", "es", "it", "pt", "ru", "ar", "hi", "th", "vi"]
-        let langNames = ["Auto Detect", "Chinese", "English", "Japanese", "Korean", "French", "German", "Spanish", "Italian", "Portuguese", "Russian", "Arabic", "Hindi", "Thai", "Vietnamese"]
-        let savedLangs = UserDefaults.standard.stringArray(forKey: "selectedLanguages") ?? ["auto"]
+        let languages = ["zh", "en", "ja", "ko", "fr", "de", "es", "it", "pt", "ru", "ar", "hi", "th", "vi"]
+        let langNames = ["Chinese", "English", "Japanese", "Korean", "French", "German", "Spanish", "Italian", "Portuguese", "Russian", "Arabic", "Hindi", "Thai", "Vietnamese"]
+        let savedLangs = UserDefaults.standard.stringArray(forKey: "selectedLanguages") ?? []
 
         let scrollView = NSScrollView(frame: NSRect(x: 20, y: y - 70, width: 320, height: 80))
         scrollView.hasVerticalScroller = true
@@ -287,6 +287,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         scrollView.documentView = langList
         contentView.addSubview(scrollView)
 
+        let langHint = NSTextField(labelWithString: "Select one = force that language. Multiple or none = auto detect.")
+        langHint.frame = NSRect(x: 20, y: y - 88, width: 320, height: 14)
+        langHint.font = NSFont.systemFont(ofSize: 10)
+        langHint.textColor = .secondaryLabelColor
+        contentView.addSubview(langHint)
+
         window.contentView = contentView
         window.makeKeyAndOrderFront(nil)
         window.level = .floating
@@ -301,20 +307,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func langCheckboxChanged(_ sender: NSButton) {
-        let languages = ["auto", "zh", "en", "ja", "ko", "fr", "de", "es", "it", "pt", "ru", "ar", "hi", "th", "vi"]
-        var saved = UserDefaults.standard.stringArray(forKey: "selectedLanguages") ?? ["auto"]
+        let languages = ["zh", "en", "ja", "ko", "fr", "de", "es", "it", "pt", "ru", "ar", "hi", "th", "vi"]
+        var saved = UserDefaults.standard.stringArray(forKey: "selectedLanguages") ?? []
         let lang = languages[sender.tag]
 
         if sender.state == .on {
-            if lang == "auto" {
-                saved = ["auto"]
-            } else {
-                saved.removeAll { $0 == "auto" }
-                if !saved.contains(lang) { saved.append(lang) }
-            }
+            if !saved.contains(lang) { saved.append(lang) }
         } else {
             saved.removeAll { $0 == lang }
-            if saved.isEmpty { saved = ["auto"] }
         }
         UserDefaults.standard.set(saved, forKey: "selectedLanguages")
         debugLog("Languages: \(saved)")
@@ -443,25 +443,43 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var didPausePlayback = false
 
     private func muteSystemAudio() {
-        let playingCheck = Process()
-        playingCheck.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-        playingCheck.arguments = ["-e", "tell application \"System Events\" to return (name of every process whose background only is false) as text"]
+        let volProc = Process()
+        volProc.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        volProc.arguments = ["-e", "output volume of (get volume settings)"]
         let pipe = Pipe()
-        playingCheck.standardOutput = pipe
-        playingCheck.standardError = FileHandle.nullDevice
-        try? playingCheck.run()
-        playingCheck.waitUntilExit()
+        volProc.standardOutput = pipe
+        volProc.standardError = FileHandle.nullDevice
+        try? volProc.run()
+        volProc.waitUntilExit()
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        previousVolume = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let mute = Process()
+        mute.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        mute.arguments = ["-e", "set volume output volume 0"]
+        try? mute.run()
+        mute.waitUntilExit()
 
         simulateMediaKey(keyType: 16)
         didPausePlayback = true
-        debugLog("Media: Play/Pause pressed (pause)")
+        debugLog("Audio paused + muted (was vol \(previousVolume ?? "?"))")
     }
 
     private func unmuteSystemAudio() {
-        guard didPausePlayback else { return }
-        simulateMediaKey(keyType: 16)
-        didPausePlayback = false
-        debugLog("Media: Play/Pause pressed (resume)")
+        if let vol = previousVolume, !vol.isEmpty {
+            let proc = Process()
+            proc.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+            proc.arguments = ["-e", "set volume output volume \(vol)"]
+            try? proc.run()
+            proc.waitUntilExit()
+            previousVolume = nil
+        }
+
+        if didPausePlayback {
+            simulateMediaKey(keyType: 16)
+            didPausePlayback = false
+        }
+        debugLog("Audio resumed + volume restored")
     }
 
     private func simulateMediaKey(keyType: Int32) {
@@ -628,13 +646,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return nil
         }
 
-        let savedLangs = UserDefaults.standard.stringArray(forKey: "selectedLanguages") ?? ["auto"]
-        let langArg: String
-        if savedLangs.contains("auto") || savedLangs.count > 1 {
-            langArg = "auto"
-        } else {
-            langArg = savedLangs.first ?? "auto"
-        }
+        let savedLangs = UserDefaults.standard.stringArray(forKey: "selectedLanguages") ?? []
+        let langArg = savedLangs.count == 1 ? savedLangs[0] : "auto"
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: whisperPath)
