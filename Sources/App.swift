@@ -218,7 +218,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func openSettings() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 360, height: 430),
+            contentRect: NSRect(x: 0, y: 0, width: 360, height: 530),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -228,7 +228,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         let contentView = NSView(frame: window.contentView!.bounds)
 
-        var y = 395
+        var y = 495
 
         let hotkeyTitle = NSTextField(labelWithString: "Hotkey:")
         hotkeyTitle.frame = NSRect(x: 20, y: y, width: 320, height: 18)
@@ -341,6 +341,28 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         langHint.font = NSFont.systemFont(ofSize: 10)
         langHint.textColor = .secondaryLabelColor
         contentView.addSubview(langHint)
+        y -= 115
+
+        let triggerTitle = NSTextField(labelWithString: "Realtime Mode Trigger Keywords:")
+        triggerTitle.frame = NSRect(x: 20, y: y, width: 320, height: 18)
+        triggerTitle.font = NSFont.boldSystemFont(ofSize: 12)
+        contentView.addSubview(triggerTitle)
+        y -= 26
+
+        let savedTriggers = UserDefaults.standard.stringArray(forKey: "realtimeTriggerKeywords") ?? ["发送", "回车", "enter"]
+        let triggerField = NSTextField(frame: NSRect(x: 20, y: y, width: 320, height: 24))
+        triggerField.stringValue = savedTriggers.joined(separator: ", ")
+        triggerField.placeholderString = "Comma separated, e.g.: 发送, 回车, enter"
+        triggerField.target = self
+        triggerField.action = #selector(triggerKeywordsChanged(_:))
+        contentView.addSubview(triggerField)
+        y -= 18
+
+        let triggerHint = NSTextField(labelWithString: "Say these words to submit in Realtime Mode.")
+        triggerHint.frame = NSRect(x: 20, y: y, width: 320, height: 14)
+        triggerHint.font = NSFont.systemFont(ofSize: 10)
+        triggerHint.textColor = .secondaryLabelColor
+        contentView.addSubview(triggerHint)
 
         window.contentView = contentView
         window.makeKeyAndOrderFront(nil)
@@ -371,6 +393,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func apiKeyChanged(_ sender: NSTextField) {
         UserDefaults.standard.set(sender.stringValue, forKey: "apiKey")
+    }
+
+    @objc private func triggerKeywordsChanged(_ sender: NSTextField) {
+        let keywords = sender.stringValue
+            .components(separatedBy: ",")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        UserDefaults.standard.set(keywords, forKey: "realtimeTriggerKeywords")
+        realtimeMode?.updateTriggerKeywords(keywords)
+        debugLog("Trigger keywords: \(keywords)")
     }
 
     private func checkHotkeyConflict(keyCode: UInt32, modifiers: UInt32) -> String? {
