@@ -1,6 +1,23 @@
 import AVFoundation
 import Speech
+import AppKit
 import Foundation
+
+private func rtLog(_ msg: String) {
+    let logFile = "/tmp/voiceinput_debug.log"
+    let entry = "\(Date()): [RT] \(msg)\n"
+    if let data = entry.data(using: .utf8) {
+        if FileManager.default.fileExists(atPath: logFile) {
+            if let fh = FileHandle(forWritingAtPath: logFile) {
+                fh.seekToEndOfFile()
+                fh.write(data)
+                fh.closeFile()
+            }
+        } else {
+            FileManager.default.createFile(atPath: logFile, contents: data)
+        }
+    }
+}
 
 class AudioRingBuffer {
     private var buffer: [Float]
@@ -88,19 +105,35 @@ class RealtimeVoiceMode {
 
     func start() {
         guard state == .idle else { return }
-        setupAudioEngine()
-        startRecognition()
-        state = .active
-        utteranceStartFrame = ringBuffer.currentFrame
-        onStateChange?(.active)
+        SFSpeechRecognizer.requestAuthorization { status in
+            rtLog("Speech auth status: \(status.rawValue)")
+            guard status == .authorized else {
+                rtLog("Speech recognition not authorized")
+                return
+            }
+            DispatchQueue.main.async {
+                self.setupAudioEngine()
+                self.startRecognition()
+                self.state = .active
+                self.utteranceStartFrame = self.ringBuffer.currentFrame
+                self.onStateChange?(.active)
+                rtLog("Realtime mode ACTIVE")
+            }
+        }
     }
 
     func startWakeMode() {
         guard state == .idle else { return }
-        setupAudioEngine()
-        startRecognition()
-        state = .wakeListen
-        onStateChange?(.wakeListen)
+        SFSpeechRecognizer.requestAuthorization { status in
+            guard status == .authorized else { return }
+            DispatchQueue.main.async {
+                self.setupAudioEngine()
+                self.startRecognition()
+                self.state = .wakeListen
+                self.onStateChange?(.wakeListen)
+                rtLog("Realtime mode WAKE-LISTEN")
+            }
+        }
     }
 
     func stop() {
@@ -144,17 +177,23 @@ class RealtimeVoiceMode {
     }
 
     private func startRecognition() {
-        let locale = Locale(identifier: "zh-CN")
-        speechRecognizer = SFSpeechRecognizer(locale: locale)
+        speechRecognizer = SFSpeechRecognizer(locale: Locale(identifier: "zh-CN"))
+            ?? SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
         speechRecognizer?.defaultTaskHint = .dictation
 
-        guard let recognizer = speechRecognizer, recognizer.isAvailable else { return }
+        guard let recognizer = speechRecognizer, recognizer.isAvailable else {
+            rtLog("SFSpeechRecognizer not available")
+            return
+        }
+        rtLog("SFSpeechRecognizer available, supportsOnDevice: \(recognizer.supportsOnDeviceRecognition)")
 
         recognitionRequest = SFSpeechAudioBufferRecognitionRequest()
         guard let request = recognitionRequest else { return }
 
         request.shouldReportPartialResults = true
-        request.requiresOnDeviceRecognition = true
+        if recognizer.supportsOnDeviceRecognition {
+            request.requiresOnDeviceRecognition = true
+        }
         request.contextualStrings = triggerKeywords + exitKeywords + wakeKeywords
 
         sessionStartTime = Date()
@@ -162,8 +201,13 @@ class RealtimeVoiceMode {
         recognitionTask = recognizer.recognitionTask(with: request) { [weak self] result, error in
             guard let self = self else { return }
 
+            if let error = error {
+                rtLog("Recognition error: \(error.localizedDescription)")
+            }
+
             if let result = result {
-                let text = result.bestTranscription.formattedString.lowercased()
+                let text = result.bestTranscription.formattedString
+                rtLog("Heard: \(text)")
                 self.processRecognitionResult(text, segments: result.bestTranscription.segments)
             }
 
@@ -176,9 +220,12 @@ class RealtimeVoiceMode {
     }
 
     private func processRecognitionResult(_ text: String, segments: [SFTranscriptionSegment]) {
+        let lowerText = text.lowercased()
+
         if state == .wakeListen {
             for keyword in wakeKeywords {
-                if text.contains(keyword.lowercased()) {
+                if lowerText.contains(keyword.lowercased()) {
+                    rtLog("Wake word detected: \(keyword)")
                     state = .active
                     utteranceStartFrame = ringBuffer.currentFrame
                     onStateChange?(.active)
@@ -192,15 +239,16 @@ class RealtimeVoiceMode {
         guard state == .active else { return }
 
         for keyword in exitKeywords {
-            if text.hasSuffix(keyword.lowercased()) || text.hasSuffix(keyword) {
+            if lowerText.hasSuffix(keyword.lowercased()) || lowerText.contains(keyword) {
+                rtLog("Exit keyword detected: \(keyword)")
                 stop()
                 return
             }
         }
 
         for keyword in triggerKeywords {
-            let lowKeyword = keyword.lowercased()
-            if text.hasSuffix(lowKeyword) || text.hasSuffix(keyword) {
+            if lowerText.hasSuffix(keyword.lowercased()) || lowerText.hasSuffix(keyword) {
+                rtLog("Trigger keyword detected: \(keyword)")
                 let triggerFrame = ringBuffer.currentFrame - Int(16000 * 0.3)
                 submitUtterance(endFrame: triggerFrame)
                 return

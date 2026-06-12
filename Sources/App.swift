@@ -218,7 +218,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func openSettings() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 360, height: 600),
+            contentRect: NSRect(x: 0, y: 0, width: 360, height: 700),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -228,7 +228,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         let contentView = NSView(frame: window.contentView!.bounds)
 
-        var y = 565
+        var y = 665
 
         let hotkeyTitle = NSTextField(labelWithString: "Hotkey:")
         hotkeyTitle.frame = NSRect(x: 20, y: y, width: 320, height: 18)
@@ -363,6 +363,28 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         triggerHint.font = NSFont.systemFont(ofSize: 10)
         triggerHint.textColor = .secondaryLabelColor
         contentView.addSubview(triggerHint)
+        y -= 30
+
+        let exitTitle = NSTextField(labelWithString: "Realtime Mode Exit Keywords:")
+        exitTitle.frame = NSRect(x: 20, y: y, width: 320, height: 18)
+        exitTitle.font = NSFont.boldSystemFont(ofSize: 12)
+        contentView.addSubview(exitTitle)
+        y -= 26
+
+        let savedExits = UserDefaults.standard.stringArray(forKey: "realtimeExitKeywords") ?? ["退出", "exit"]
+        let exitField = NSTextField(frame: NSRect(x: 20, y: y, width: 320, height: 24))
+        exitField.stringValue = savedExits.joined(separator: ", ")
+        exitField.placeholderString = "Comma separated, e.g.: 退出, exit"
+        exitField.target = self
+        exitField.action = #selector(exitKeywordsChanged(_:))
+        contentView.addSubview(exitField)
+        y -= 18
+
+        let exitHint = NSTextField(labelWithString: "Say these words to exit Realtime Mode.")
+        exitHint.frame = NSRect(x: 20, y: y, width: 320, height: 14)
+        exitHint.font = NSFont.systemFont(ofSize: 10)
+        exitHint.textColor = .secondaryLabelColor
+        contentView.addSubview(exitHint)
 
         window.contentView = contentView
         window.makeKeyAndOrderFront(nil)
@@ -403,6 +425,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         UserDefaults.standard.set(keywords, forKey: "realtimeTriggerKeywords")
         realtimeMode?.updateTriggerKeywords(keywords)
         debugLog("Trigger keywords: \(keywords)")
+    }
+
+    @objc private func exitKeywordsChanged(_ sender: NSTextField) {
+        let keywords = sender.stringValue
+            .components(separatedBy: ",")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        UserDefaults.standard.set(keywords, forKey: "realtimeExitKeywords")
+        debugLog("Exit keywords: \(keywords)")
     }
 
     private func checkHotkeyConflict(keyCode: UInt32, modifiers: UInt32) -> String? {
