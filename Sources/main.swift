@@ -50,6 +50,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var state: RecordingState = .idle
     private var audioRecorder: AudioRecorder?
     private var currentHotKeyRef: EventHotKeyRef?
+    private var escHotKeyRef: EventHotKeyRef?
     private var hotkeyLabel: NSMenuItem!
     private var floatingButton: FloatingRecordButton?
 
@@ -393,7 +394,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             GetEventParameter(event!, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID), nil, MemoryLayout<EventHotKeyID>.size, nil, &hotkeyID)
 
             let app = NSApplication.shared.delegate as! AppDelegate
-            DispatchQueue.main.async { app.toggleRecording() }
+            if hotkeyID.id == 2 {
+                DispatchQueue.main.async { app.cancelRecording() }
+            } else {
+                DispatchQueue.main.async { app.toggleRecording() }
+            }
             return noErr
         }, 1, &eventType, nil, nil)
 
@@ -404,9 +409,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard state == .recording, let recorder = audioRecorder else { return }
         _ = recorder.stopRecording()
         unmuteSystemAudio()
+        unregisterEscapeKey()
         state = .idle
         updateStatusIcon()
         debugLog("Recording cancelled by Escape")
+    }
+
+    private func registerEscapeKey() {
+        let escID = EventHotKeyID(signature: OSType(0x56494E50), id: 2)
+        RegisterEventHotKey(53, 0, escID, GetApplicationEventTarget(), 0, &escHotKeyRef)
+    }
+
+    private func unregisterEscapeKey() {
+        if let ref = escHotKeyRef {
+            UnregisterEventHotKey(ref)
+            escHotKeyRef = nil
+        }
     }
 
     private func saveTargetTTY() {
@@ -530,6 +548,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         saveTargetTTY()
         muteSystemAudio()
+        registerEscapeKey()
 
         do {
             try recorder.startRecording()
@@ -539,6 +558,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         } catch {
             debugLog(" Failed to start recording: \(error)")
             unmuteSystemAudio()
+            unregisterEscapeKey()
         }
     }
 
@@ -546,6 +566,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard let recorder = audioRecorder else { return }
         let wavURL = recorder.stopRecording()
         unmuteSystemAudio()
+        unregisterEscapeKey()
         state = .transcribing
         updateStatusIcon()
         debugLog(" Recording stopped, transcribing...")
