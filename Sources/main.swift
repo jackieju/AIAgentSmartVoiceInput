@@ -647,7 +647,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         let savedLangs = UserDefaults.standard.stringArray(forKey: "selectedLanguages") ?? []
-        let langArg = savedLangs.count == 1 ? savedLangs[0] : "auto"
+        let langArg = savedLangs.isEmpty ? "auto" : savedLangs[0]
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: whisperPath)
