@@ -218,7 +218,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func openSettings() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 360, height: 530),
+            contentRect: NSRect(x: 0, y: 0, width: 360, height: 600),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -228,7 +228,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         let contentView = NSView(frame: window.contentView!.bounds)
 
-        var y = 495
+        var y = 565
 
         let hotkeyTitle = NSTextField(labelWithString: "Hotkey:")
         hotkeyTitle.frame = NSRect(x: 20, y: y, width: 320, height: 18)
