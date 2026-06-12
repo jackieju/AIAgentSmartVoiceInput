@@ -428,22 +428,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func saveTargetTTY() {
-        let requestFile = "/tmp/voiceinput_tty_request"
-        let lockFile = "/tmp/voiceinput_tty_locked"
-        try? "1".write(toFile: requestFile, atomically: false, encoding: .utf8)
-
-        var waited = 0.0
-        while waited < 0.5 {
-            Thread.sleep(forTimeInterval: 0.05)
-            waited += 0.05
-            let locked = (try? String(contentsOfFile: lockFile, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            if locked == "1" { break }
-        }
-
-        let currentTTY = (try? String(contentsOfFile: "/tmp/voiceinput_target_tty.txt", encoding: .utf8))?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        if !currentTTY.isEmpty {
-            debugLog("Target TTY locked: \(currentTTY)")
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        proc.arguments = ["-e", "tell application \"Terminal\" to return tty of selected tab of front window"]
+        let pipe = Pipe()
+        proc.standardOutput = pipe
+        proc.standardError = FileHandle.nullDevice
+        try? proc.run()
+        proc.waitUntilExit()
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        let tty = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !tty.isEmpty && tty != "missing value" {
+            try? tty.write(toFile: "/tmp/voiceinput_target_tty.txt", atomically: false, encoding: .utf8)
+            debugLog("Target TTY saved: \(tty)")
+        } else {
+            debugLog("Failed to get TTY from osascript")
         }
     }
 
@@ -922,7 +921,7 @@ class FloatingRecordButton {
         button = dragButton
 
         let screen = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
-        panel.setFrameOrigin(NSPoint(x: screen.maxX - 60, y: screen.maxY - 60))
+        panel.setFrameOrigin(NSPoint(x: screen.maxX - 120, y: screen.maxY - 120))
         panel.orderFrontRegardless()
     }
 
