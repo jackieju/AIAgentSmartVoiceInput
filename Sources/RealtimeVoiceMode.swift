@@ -201,18 +201,24 @@ class RealtimeVoiceMode {
         recognitionTask = recognizer.recognitionTask(with: request) { [weak self] result, error in
             guard let self = self else { return }
 
-            if let error = error {
-                rtLog("Recognition error: \(error.localizedDescription)")
-            }
-
             if let result = result {
                 let text = result.bestTranscription.formattedString
                 rtLog("Heard: \(text)")
                 self.processRecognitionResult(text, segments: result.bestTranscription.segments)
             }
 
-            if error != nil || (result?.isFinal ?? false) {
-                self.restartRecognitionIfNeeded()
+            let isFinal = result?.isFinal ?? false
+            let isNoSpeech = error?.localizedDescription.contains("No speech detected") ?? false
+
+            if let error = error, !isNoSpeech {
+                rtLog("Recognition error: \(error.localizedDescription)")
+            }
+
+            if isFinal || error != nil {
+                let delay = isNoSpeech ? 0.1 : 1.0
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                    self.restartRecognitionIfNeeded()
+                }
             }
         }
 
@@ -249,15 +255,28 @@ class RealtimeVoiceMode {
         for keyword in triggerKeywords {
             if lowerText.hasSuffix(keyword.lowercased()) || lowerText.hasSuffix(keyword) {
                 rtLog("Trigger keyword detected: \(keyword)")
-                let triggerFrame = ringBuffer.currentFrame - Int(16000 * 0.3)
-                submitUtterance(endFrame: triggerFrame)
+                let content = text
+                    .replacingOccurrences(of: keyword, with: "")
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                if !content.isEmpty {
+                    state = .transcribing
+                    onStateChange?(.transcribing)
+                    onSubmit?(content)
+                    rtLog("Submitted: \(content)")
+                    state = .active
+                    onStateChange?(.active)
+                }
+                utteranceStartFrame = ringBuffer.currentFrame
+                restartRecognitionIfNeeded()
                 return
             }
         }
     }
 
     private func submitUtterance(endFrame: Int) {
+        rtLog("submitUtterance: start=\(utteranceStartFrame) end=\(endFrame) diff=\(endFrame - utteranceStartFrame)")
         guard endFrame > utteranceStartFrame else {
+            rtLog("submitUtterance: endFrame <= startFrame, skipping")
             utteranceStartFrame = ringBuffer.currentFrame
             return
         }
@@ -271,6 +290,7 @@ class RealtimeVoiceMode {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self = self,
                   let samples = self.ringBuffer.slice(from: startFrame, to: endFrame) else {
+                rtLog("submitUtterance: slice failed or empty")
                 DispatchQueue.main.async {
                     self?.state = .active
                     self?.onStateChange?(.active)
@@ -278,7 +298,9 @@ class RealtimeVoiceMode {
                 return
             }
 
+            rtLog("submitUtterance: got \(samples.count) samples (\(Double(samples.count)/16000.0)s)")
             let text = self.transcribeWithWhisper(samples: samples)
+            rtLog("submitUtterance: whisper result: \(text ?? "nil")")
 
             DispatchQueue.main.async {
                 if let text = text, !text.isEmpty {
