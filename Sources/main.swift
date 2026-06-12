@@ -372,6 +372,26 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         debugLog("Recording cancelled by Escape")
     }
 
+    private func saveTargetTTY() {
+        let requestFile = "/tmp/voiceinput_tty_request"
+        let lockFile = "/tmp/voiceinput_tty_locked"
+        try? "1".write(toFile: requestFile, atomically: false, encoding: .utf8)
+
+        var waited = 0.0
+        while waited < 0.5 {
+            Thread.sleep(forTimeInterval: 0.05)
+            waited += 0.05
+            let locked = (try? String(contentsOfFile: lockFile, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if locked == "1" { break }
+        }
+
+        let currentTTY = (try? String(contentsOfFile: "/tmp/voiceinput_target_tty.txt", encoding: .utf8))?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !currentTTY.isEmpty {
+            debugLog("Target TTY locked: \(currentTTY)")
+        }
+    }
+
     private func updateStatusIcon() {
         guard let button = statusItem.button else { return }
         button.image = nil
@@ -400,10 +420,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func startRecording() {
         guard let recorder = audioRecorder else { return }
 
-        if let frontApp = NSWorkspace.shared.frontmostApplication {
-            let pidStr = "\(frontApp.processIdentifier)"
-            try? pidStr.write(toFile: "/tmp/voiceinput_frontapp.pid", atomically: false, encoding: .utf8)
-        }
+        saveTargetTTY()
 
         do {
             try recorder.startRecording()

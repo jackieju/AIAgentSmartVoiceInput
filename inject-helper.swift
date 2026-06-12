@@ -12,20 +12,51 @@ if CommandLine.arguments.count > 1 && CommandLine.arguments[1] == "--daemon" {
     
     print("inject-helper daemon running (polling), watching \(triggerFile)")
     
+    var lastKnownTTY: String?
+    var tickCount = 0
+    let lockFile = "/tmp/voiceinput_tty_locked"
+    let requestFile = "/tmp/voiceinput_tty_request"
+    
     while true {
+        let request = (try? String(contentsOfFile: requestFile, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if request == "1" {
+            try? "".write(toFile: requestFile, atomically: false, encoding: .utf8)
+            if let tty = getCurrentTerminalTTYWithTimeout() {
+                lastKnownTTY = tty
+                try? tty.write(toFile: "/tmp/voiceinput_target_tty.txt", atomically: false, encoding: .utf8)
+            }
+            try? "1".write(toFile: lockFile, atomically: false, encoding: .utf8)
+        }
+
         if let text = try? String(contentsOfFile: triggerFile, encoding: .utf8),
            !text.isEmpty {
             try? "".write(toFile: triggerFile, atomically: false, encoding: .utf8)
             injectNow(text)
+            try? "".write(toFile: lockFile, atomically: false, encoding: .utf8)
         }
-        Thread.sleep(forTimeInterval: 0.2)
+        
+        tickCount += 1
+        if tickCount % 10 == 0 {
+            let locked = (try? String(contentsOfFile: lockFile, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if locked.isEmpty {
+                if let termApp = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == "com.apple.Terminal" }),
+                   termApp.isActive {
+                    if let tty = getCurrentTerminalTTYWithTimeout() {
+                        lastKnownTTY = tty
+                        try? tty.write(toFile: "/tmp/voiceinput_target_tty.txt", atomically: false, encoding: .utf8)
+                    }
+                }
+            }
+        }
+        
+        Thread.sleep(forTimeInterval: 0.1)
     }
 } else {
     guard CommandLine.arguments.count > 1 else { exit(1) }
     injectNow(CommandLine.arguments[1])
 }
 
-func getCurrentTerminalTTY() -> String? {
+func getCurrentTerminalTTYWithTimeout() -> String? {
     let proc = Process()
     proc.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
     proc.arguments = ["-e", "tell application \"Terminal\" to return tty of selected tab of front window"]
@@ -33,7 +64,16 @@ func getCurrentTerminalTTY() -> String? {
     proc.standardOutput = pipe
     proc.standardError = FileHandle.nullDevice
     try? proc.run()
-    proc.waitUntilExit()
+    
+    let deadline = Date().addingTimeInterval(1.0)
+    while proc.isRunning && Date() < deadline {
+        Thread.sleep(forTimeInterval: 0.05)
+    }
+    if proc.isRunning {
+        proc.terminate()
+        return nil
+    }
+    
     let data = pipe.fileHandleForReading.readDataToEndOfFile()
     let tty = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
     if let tty = tty, !tty.isEmpty, tty != "missing value" {
@@ -42,15 +82,45 @@ func getCurrentTerminalTTY() -> String? {
     return nil
 }
 
+func activateTargetTab() {
+    let ttyFile = "/tmp/voiceinput_target_tty.txt"
+    guard let targetTTY = try? String(contentsOfFile: ttyFile, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines),
+          !targetTTY.isEmpty else {
+        if let termApp = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == "com.apple.Terminal" }) {
+            termApp.activate()
+        }
+        return
+    }
+
+    let script = """
+    tell application "Terminal"
+        activate
+        repeat with w in windows
+            repeat with t in tabs of w
+                if tty of t is "\(targetTTY)" then
+                    set selected tab of w to t
+                    set index of w to 1
+                    return
+                end if
+            end repeat
+        end repeat
+    end tell
+    """
+    let proc = Process()
+    proc.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+    proc.arguments = ["-e", script]
+    proc.standardError = FileHandle.nullDevice
+    try? proc.run()
+    proc.waitUntilExit()
+}
+
 func injectNow(_ text: String) {
     let pasteboard = NSPasteboard.general
     let old = pasteboard.string(forType: .string)
     pasteboard.clearContents()
     pasteboard.setString(text, forType: .string)
 
-    if let termApp = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == "com.apple.Terminal" }) {
-        termApp.activate()
-    }
+    activateTargetTab()
     Thread.sleep(forTimeInterval: 0.3)
 
     let source = CGEventSource(stateID: .hidSystemState)
