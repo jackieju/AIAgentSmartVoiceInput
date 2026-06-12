@@ -411,21 +411,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func cancelRecording() {
-        if state == .recording, let recorder = audioRecorder {
-            _ = recorder.stopRecording()
-            unmuteSystemAudio()
-            state = .idle
-            updateStatusIcon()
-            debugLog("Recording cancelled by Escape")
-        } else {
-            let proc = Process()
-            proc.executableURL = URL(fileURLWithPath: "/usr/bin/killall")
-            proc.arguments = ["say"]
-            proc.standardError = FileHandle.nullDevice
-            try? proc.run()
-            proc.waitUntilExit()
-            debugLog("TTS stopped by Escape")
-        }
+        guard state == .recording, let recorder = audioRecorder else { return }
+        _ = recorder.stopRecording()
+        unmuteSystemAudio()
+        state = .idle
+        updateStatusIcon()
+        debugLog("Recording cancelled by Escape")
     }
 
     private func saveTargetTTY() {
@@ -536,23 +527,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func toggleRecording() {
         switch state {
         case .idle:
-            stopTTS()
             startRecording()
         case .recording:
             stopRecordingAndTranscribe()
         case .transcribing:
             break
         }
-    }
-
-    private func stopTTS() {
-        let proc = Process()
-        proc.executableURL = URL(fileURLWithPath: "/usr/bin/killall")
-        proc.arguments = ["say"]
-        proc.standardOutput = FileHandle.nullDevice
-        proc.standardError = FileHandle.nullDevice
-        try? proc.run()
-        proc.waitUntilExit()
     }
 
     private func startRecording() {
