@@ -73,7 +73,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(NSMenuItem.separator())
         hotkeyLabel = NSMenuItem(title: "  Hotkey: \(savedHotkeyDisplay())", action: nil, keyEquivalent: "")
         menu.addItem(hotkeyLabel)
-        menu.addItem(NSMenuItem(title: "  Cancel: Escape", action: nil, keyEquivalent: ""))
         menu.addItem(NSMenuItem.separator())
         let showButtonItem = NSMenuItem(title: "Show Floating Button", action: #selector(toggleFloatingButton(_:)), keyEquivalent: "")
         showButtonItem.target = self
@@ -388,22 +387,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        // Escape key: keycode=53, no modifiers
-        var escHotKeyRef: EventHotKeyRef?
-        let escHotKeyID = EventHotKeyID(signature: OSType(0x56494E50), id: 2)
-        RegisterEventHotKey(53, 0, escHotKeyID, GetApplicationEventTarget(), 0, &escHotKeyRef)
-
         var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
         InstallEventHandler(GetApplicationEventTarget(), { (_, event, _) -> OSStatus in
             var hotkeyID = EventHotKeyID()
             GetEventParameter(event!, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID), nil, MemoryLayout<EventHotKeyID>.size, nil, &hotkeyID)
 
             let app = NSApplication.shared.delegate as! AppDelegate
-            if hotkeyID.id == 2 {
-                DispatchQueue.main.async { app.cancelRecording() }
-            } else {
-                DispatchQueue.main.async { app.toggleRecording() }
-            }
+            DispatchQueue.main.async { app.toggleRecording() }
             return noErr
         }, 1, &eventType, nil, nil)
 
