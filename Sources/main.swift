@@ -169,7 +169,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func openSettings() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 360, height: 280),
+            contentRect: NSRect(x: 0, y: 0, width: 360, height: 340),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -179,7 +179,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         let contentView = NSView(frame: window.contentView!.bounds)
 
-        var y = 245
+        var y = 305
 
         let hotkeyTitle = NSTextField(labelWithString: "Hotkey:")
         hotkeyTitle.frame = NSRect(x: 20, y: y, width: 320, height: 18)
@@ -260,6 +260,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         apiHint.font = NSFont.systemFont(ofSize: 10)
         apiHint.textColor = .secondaryLabelColor
         contentView.addSubview(apiHint)
+        y -= 30
+
+        let langTitle = NSTextField(labelWithString: "Recognition Language:")
+        langTitle.frame = NSRect(x: 20, y: y, width: 320, height: 18)
+        langTitle.font = NSFont.boldSystemFont(ofSize: 12)
+        contentView.addSubview(langTitle)
+        y -= 28
+
+        let langPopup = NSPopUpButton(frame: NSRect(x: 20, y: y, width: 320, height: 26))
+        langPopup.addItems(withTitles: ["Auto Detect", "Chinese + English", "Chinese Only", "English Only"])
+        let savedLang = UserDefaults.standard.integer(forKey: "recognitionLanguage")
+        langPopup.selectItem(at: savedLang)
+        langPopup.target = self
+        langPopup.action = #selector(languageChanged(_:))
+        contentView.addSubview(langPopup)
 
         window.contentView = contentView
         window.makeKeyAndOrderFront(nil)
@@ -272,6 +287,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func providerChanged(_ sender: NSPopUpButton) {
         UserDefaults.standard.set(sender.indexOfSelectedItem, forKey: "transcriptionProvider")
         debugLog("Provider changed to: \(sender.titleOfSelectedItem ?? "")")
+    }
+
+    @objc private func languageChanged(_ sender: NSPopUpButton) {
+        UserDefaults.standard.set(sender.indexOfSelectedItem, forKey: "recognitionLanguage")
+        debugLog("Language changed to: \(sender.titleOfSelectedItem ?? "")")
     }
 
     @objc private func apiKeyChanged(_ sender: NSTextField) {
@@ -367,6 +387,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func cancelRecording() {
         guard state == .recording, let recorder = audioRecorder else { return }
         _ = recorder.stopRecording()
+        unmuteSystemAudio()
         state = .idle
         updateStatusIcon()
         debugLog("Recording cancelled by Escape")
@@ -390,6 +411,39 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if !currentTTY.isEmpty {
             debugLog("Target TTY locked: \(currentTTY)")
         }
+    }
+
+    private var previousVolume: String?
+
+    private func muteSystemAudio() {
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        proc.arguments = ["-e", "output volume of (get volume settings)"]
+        let pipe = Pipe()
+        proc.standardOutput = pipe
+        proc.standardError = FileHandle.nullDevice
+        try? proc.run()
+        proc.waitUntilExit()
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        previousVolume = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let mute = Process()
+        mute.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        mute.arguments = ["-e", "set volume output volume 0"]
+        try? mute.run()
+        mute.waitUntilExit()
+        debugLog("System audio muted (was \(previousVolume ?? "?"))")
+    }
+
+    private func unmuteSystemAudio() {
+        guard let vol = previousVolume, !vol.isEmpty else { return }
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        proc.arguments = ["-e", "set volume output volume \(vol)"]
+        try? proc.run()
+        proc.waitUntilExit()
+        debugLog("System audio restored to \(vol)")
+        previousVolume = nil
     }
 
     private func updateStatusIcon() {
@@ -421,6 +475,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard let recorder = audioRecorder else { return }
 
         saveTargetTTY()
+        muteSystemAudio()
 
         do {
             try recorder.startRecording()
@@ -429,12 +484,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             debugLog(" Recording started")
         } catch {
             debugLog(" Failed to start recording: \(error)")
+            unmuteSystemAudio()
         }
     }
 
     private func stopRecordingAndTranscribe() {
         guard let recorder = audioRecorder else { return }
         let wavURL = recorder.stopRecording()
+        unmuteSystemAudio()
         state = .transcribing
         updateStatusIcon()
         debugLog(" Recording stopped, transcribing...")
@@ -525,12 +582,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return nil
         }
 
+        let langSetting = UserDefaults.standard.integer(forKey: "recognitionLanguage")
+        let langArg: String
+        switch langSetting {
+        case 1: langArg = "zh"
+        case 2: langArg = "zh"
+        case 3: langArg = "en"
+        default: langArg = "auto"
+        }
+
         let process = Process()
         process.executableURL = URL(fileURLWithPath: whisperPath)
         process.arguments = [
             "-m", model.path,
             "-f", wavURL.path,
-            "-l", "auto",
+            "-l", langArg,
             "--no-timestamps",
             "-t", "4",
         ]
@@ -869,7 +935,7 @@ class DraggableButton: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         let circle = NSBezierPath(ovalIn: bounds.insetBy(dx: 2, dy: 2))
-        NSColor.black.withAlphaComponent(0.3).setFill()
+        NSColor.black.withAlphaComponent(0.2).setFill()
         circle.fill()
         NSColor.white.withAlphaComponent(0.5).setStroke()
         circle.lineWidth = 1.5
