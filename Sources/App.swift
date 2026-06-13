@@ -179,8 +179,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             statusItem.button?.title = "🎤"
             floatingButton?.updateTitle("🎤")
         case .wakeListen:
-            statusItem.button?.title = "👂"
-            floatingButton?.updateTitle("👂")
+            statusItem.button?.title = "🎤"
+            floatingButton?.updateTitle("🎤")
         case .active:
             statusItem.button?.title = "🗣️"
             floatingButton?.updateTitle("🗣️")
@@ -754,9 +754,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func toggleRecording() {
-        if realtimeMode != nil {
+        if let mode = realtimeMode, mode.currentState == .active || mode.currentState == .transcribing {
             toggleRealtimeMode()
             return
+        }
+        if let mode = realtimeMode, mode.currentState == .wakeListen {
+            mode.stop()
+            realtimeMode = nil
         }
         switch state {
         case .idle:
@@ -802,6 +806,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 DispatchQueue.main.async {
                     self.state = .idle
                     self.updateStatusIcon()
+                    self.startWakeListening()
                 }
                 return
             }
@@ -812,6 +817,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 }
                 self.state = .idle
                 self.updateStatusIcon()
+                self.startWakeListening()
             }
         }
     }
