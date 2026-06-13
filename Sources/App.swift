@@ -65,7 +65,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if !UserDefaults.standard.contains(key: "showFloatingButton") || UserDefaults.standard.bool(forKey: "showFloatingButton") {
             floatingButton = FloatingRecordButton(delegate: self)
         }
-        startWakeListening()
     }
 
     private func startWakeListening() {

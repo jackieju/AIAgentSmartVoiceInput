@@ -251,8 +251,8 @@ class RealtimeVoiceMode {
         guard state == .active else { return }
 
         for keyword in exitKeywords {
-            if lowerText.hasSuffix(keyword.lowercased()) || lowerText.contains(keyword) {
-                rtLog("Exit keyword detected: \(keyword)")
+            if lowerText.contains(keyword.lowercased()) || text.contains(keyword) {
+                rtLog("Exit keyword detected: \(keyword) in [\(text)]")
                 stop()
                 return
             }
