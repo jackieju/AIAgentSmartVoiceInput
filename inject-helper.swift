@@ -26,6 +26,14 @@ if CommandLine.arguments.count > 1 && CommandLine.arguments[1] == "--daemon" {
 }
 
 func activateTargetTab() {
+    let overrideFile = "/tmp/voiceinput_target_override.txt"
+    let override = (try? String(contentsOfFile: overrideFile, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+    if !override.isEmpty {
+        activateByOverride(override)
+        return
+    }
+
     let ttyFile = "/tmp/voiceinput_target_tty.txt"
     guard let targetTTY = try? String(contentsOfFile: ttyFile, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines),
           !targetTTY.isEmpty else {
@@ -49,6 +57,58 @@ func activateTargetTab() {
         end repeat
     end tell
     """
+    let proc = Process()
+    proc.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+    proc.arguments = ["-e", script]
+    proc.standardError = FileHandle.nullDevice
+    try? proc.run()
+    proc.waitUntilExit()
+}
+
+func activateByOverride(_ target: String) {
+    var script: String
+
+    if target.hasPrefix("tab:") {
+        let num = Int(target.replacingOccurrences(of: "tab:", with: "")) ?? 1
+        script = """
+        tell application "Terminal"
+            activate
+            set tabCount to 0
+            repeat with w in windows
+                repeat with t in tabs of w
+                    set tabCount to tabCount + 1
+                    if tabCount is \(num) then
+                        set selected tab of w to t
+                        set index of w to 1
+                        return
+                    end if
+                end repeat
+            end repeat
+        end tell
+        """
+    } else if target.hasPrefix("name:") {
+        let name = target.replacingOccurrences(of: "name:", with: "")
+        script = """
+        tell application "Terminal"
+            activate
+            repeat with w in windows
+                repeat with t in tabs of w
+                    if name of w contains "\(name)" then
+                        set selected tab of w to t
+                        set index of w to 1
+                        return
+                    end if
+                end repeat
+            end repeat
+        end tell
+        """
+    } else {
+        if let termApp = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == "com.apple.Terminal" }) {
+            termApp.activate()
+        }
+        return
+    }
+
     let proc = Process()
     proc.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
     proc.arguments = ["-e", script]

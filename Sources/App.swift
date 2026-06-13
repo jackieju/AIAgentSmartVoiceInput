@@ -114,8 +114,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 exitKeywords: exits,
                 wakeKeywords: wakes,
                 resetKeywords: resets,
-                onSubmit: { [weak self] text in
-                    self?.injectText(text)
+                onSubmit: { [weak self] text, targetTab in
+                    self?.injectTextToTarget(text, target: targetTab)
                 },
                 onStateChange: { [weak self] newState in
                     DispatchQueue.main.async {
@@ -938,8 +938,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func injectText(_ text: String) {
-        debugLog("Injecting text: \(text)")
+        injectTextToTarget(text, target: nil)
+    }
+
+    private func injectTextToTarget(_ text: String, target: String?) {
+        debugLog("Injecting text: \(text), target: \(target ?? "default")")
         ensureDaemonRunning()
+
+        if let target = target {
+            try? target.write(toFile: "/tmp/voiceinput_target_override.txt", atomically: false, encoding: .utf8)
+        } else {
+            try? "".write(toFile: "/tmp/voiceinput_target_override.txt", atomically: false, encoding: .utf8)
+        }
+
         let triggerFile = "/tmp/voiceinput_inject.txt"
         do {
             try text.write(toFile: triggerFile, atomically: false, encoding: .utf8)

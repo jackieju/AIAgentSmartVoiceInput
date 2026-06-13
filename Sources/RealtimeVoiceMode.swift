@@ -84,7 +84,7 @@ class RealtimeVoiceMode {
     private var exitKeywords: [String]
     private var wakeKeywords: [String]
     private var resetKeywords: [String]
-    private var onSubmit: ((String) -> Void)?
+    private var onSubmit: ((String, String?) -> Void)?
     private var onStateChange: ((RealtimeVoiceState) -> Void)?
 
     var currentState: RealtimeVoiceState { state }
@@ -93,7 +93,7 @@ class RealtimeVoiceMode {
          exitKeywords: [String] = ["退出", "exit"],
          wakeKeywords: [String] = ["hey voice", "嘿语音"],
          resetKeywords: [String] = ["重来", "reset"],
-         onSubmit: ((String) -> Void)? = nil,
+         onSubmit: ((String, String?) -> Void)? = nil,
          onStateChange: ((RealtimeVoiceState) -> Void)? = nil) {
         self.triggerKeywords = triggerKeywords
         self.exitKeywords = exitKeywords
@@ -270,15 +270,27 @@ class RealtimeVoiceMode {
         for keyword in triggerKeywords {
             if lowerText.hasSuffix(keyword.lowercased()) || lowerText.hasSuffix(keyword) {
                 rtLog("Trigger keyword detected: \(keyword) in text: [\(text)]")
-                let content = text
+                var content = text
                     .replacingOccurrences(of: keyword, with: "")
                     .trimmingCharacters(in: .whitespacesAndNewlines)
-                rtLog("Content after removing keyword: [\(content)] (len=\(content.count))")
+
+                var targetTab: String? = nil
+                let tellPattern = "告诉"
+                if content.hasPrefix(tellPattern) {
+                    let afterTell = String(content.dropFirst(tellPattern.count)).trimmingCharacters(in: .whitespaces)
+                    let (target, remaining) = parseTellTarget(afterTell)
+                    if let t = target {
+                        targetTab = t
+                        content = remaining
+                    }
+                }
+
+                rtLog("Content: [\(content)], targetTab: \(targetTab ?? "default")")
                 if !content.isEmpty {
                     state = .transcribing
                     onStateChange?(.transcribing)
-                    onSubmit?(content)
-                    rtLog("Submitted: \(content)")
+                    onSubmit?(content, targetTab)
+                    rtLog("Submitted: \(content) -> \(targetTab ?? "default")")
                     state = .active
                     onStateChange?(.active)
                 } else {
@@ -289,6 +301,52 @@ class RealtimeVoiceMode {
                 return
             }
         }
+    }
+
+    private func parseTellTarget(_ text: String) -> (String?, String) {
+        // "terminal 三号 内容" or "terminal 3号 内容" or "三国战棋 内容"
+        let numMap: [String: String] = [
+            "一": "1", "二": "2", "三": "3", "四": "4", "五": "5",
+            "六": "6", "七": "7", "八": "8", "九": "9", "十": "10",
+            "1": "1", "2": "2", "3": "3", "4": "4", "5": "5",
+            "6": "6", "7": "7", "8": "8", "9": "9", "10": "10",
+        ]
+
+        var remaining = text
+        let terminalPrefixes = ["terminal", "Terminal", "TERMINAL"]
+        var isTerminalNum = false
+
+        for prefix in terminalPrefixes {
+            if remaining.lowercased().hasPrefix(prefix.lowercased()) {
+                remaining = String(remaining.dropFirst(prefix.count)).trimmingCharacters(in: .whitespaces)
+                isTerminalNum = true
+                break
+            }
+        }
+
+        if isTerminalNum {
+            for (cnNum, num) in numMap {
+                let pattern = cnNum + "号"
+                if remaining.hasPrefix(pattern) {
+                    let afterNum = String(remaining.dropFirst(pattern.count)).trimmingCharacters(in: .whitespaces)
+                    return ("tab:\(num)", afterNum)
+                }
+            }
+            if let match = remaining.range(of: #"^(\d+)号"#, options: .regularExpression) {
+                let num = String(remaining[match]).replacingOccurrences(of: "号", with: "")
+                let afterNum = String(remaining[match.upperBound...]).trimmingCharacters(in: .whitespaces)
+                return ("tab:\(num)", afterNum)
+            }
+        }
+
+        let words = remaining.components(separatedBy: " ")
+        if words.count > 1 {
+            let name = words[0]
+            let afterName = words.dropFirst().joined(separator: " ")
+            return ("name:\(name)", afterName)
+        }
+
+        return (nil, text)
     }
 
     private func submitUtterance(endFrame: Int) {
@@ -322,7 +380,7 @@ class RealtimeVoiceMode {
 
             DispatchQueue.main.async {
                 if let text = text, !text.isEmpty {
-                    self.onSubmit?(text)
+                    self.onSubmit?(text, nil)
                 }
                 self.state = .active
                 self.onStateChange?(.active)
