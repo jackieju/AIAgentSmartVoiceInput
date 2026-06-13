@@ -89,10 +89,10 @@ class RealtimeVoiceMode {
 
     var currentState: RealtimeVoiceState { state }
 
-    init(triggerKeywords: [String] = ["发送", "回车", "enter"],
-         exitKeywords: [String] = ["退出", "exit"],
-         wakeKeywords: [String] = ["hey voice", "嘿语音"],
-         resetKeywords: [String] = ["重来", "reset"],
+    init(triggerKeywords: [String] = ["完毕"],
+         exitKeywords: [String] = ["退出语音"],
+         wakeKeywords: [String] = ["登登同学"],
+         resetKeywords: [String] = ["不算重来"],
          onSubmit: ((String, String?) -> Void)? = nil,
          onStateChange: ((RealtimeVoiceState) -> Void)? = nil) {
         self.triggerKeywords = triggerKeywords

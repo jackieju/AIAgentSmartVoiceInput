@@ -104,10 +104,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func toggleRealtimeMode() {
         if realtimeMode == nil {
-            let triggers = UserDefaults.standard.stringArray(forKey: "realtimeTriggerKeywords") ?? ["发送", "回车", "enter"]
-            let exits = UserDefaults.standard.stringArray(forKey: "realtimeExitKeywords") ?? ["退出", "exit"]
-            let wakes = UserDefaults.standard.stringArray(forKey: "realtimeWakeKeywords") ?? ["hey voice"]
-            let resets = UserDefaults.standard.stringArray(forKey: "realtimeResetKeywords") ?? ["重来", "reset"]
+            let triggers = UserDefaults.standard.stringArray(forKey: "realtimeTriggerKeywords") ?? ["完毕"]
+            let exits = UserDefaults.standard.stringArray(forKey: "realtimeExitKeywords") ?? ["退出语音"]
+            let wakes = UserDefaults.standard.stringArray(forKey: "realtimeWakeKeywords") ?? ["登登同学"]
+            let resets = UserDefaults.standard.stringArray(forKey: "realtimeResetKeywords") ?? ["不算重来"]
 
             realtimeMode = RealtimeVoiceMode(
                 triggerKeywords: triggers,
@@ -359,7 +359,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         contentView.addSubview(triggerTitle)
         y -= 26
 
-        let savedTriggers = UserDefaults.standard.stringArray(forKey: "realtimeTriggerKeywords") ?? ["发送", "回车", "enter"]
+        let savedTriggers = UserDefaults.standard.stringArray(forKey: "realtimeTriggerKeywords") ?? ["完毕"]
         let triggerField = NSTextField(frame: NSRect(x: 20, y: y, width: 320, height: 24))
         triggerField.stringValue = savedTriggers.joined(separator: ", ")
         triggerField.placeholderString = "Comma separated, e.g.: 发送, 回车, enter"
@@ -381,7 +381,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         contentView.addSubview(exitTitle)
         y -= 26
 
-        let savedExits = UserDefaults.standard.stringArray(forKey: "realtimeExitKeywords") ?? ["退出", "exit"]
+        let savedExits = UserDefaults.standard.stringArray(forKey: "realtimeExitKeywords") ?? ["退出语音"]
         let exitField = NSTextField(frame: NSRect(x: 20, y: y, width: 320, height: 24))
         exitField.stringValue = savedExits.joined(separator: ", ")
         exitField.placeholderString = "Comma separated, e.g.: 退出, exit"
@@ -403,7 +403,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         contentView.addSubview(resetTitle)
         y -= 26
 
-        let savedResets = UserDefaults.standard.stringArray(forKey: "realtimeResetKeywords") ?? ["重来", "reset"]
+        let savedResets = UserDefaults.standard.stringArray(forKey: "realtimeResetKeywords") ?? ["不算重来"]
         let resetField = NSTextField(frame: NSRect(x: 20, y: y, width: 320, height: 24))
         resetField.stringValue = savedResets.joined(separator: ", ")
         resetField.placeholderString = "Comma separated, e.g.: 重来, reset"
@@ -425,7 +425,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         contentView.addSubview(wakeTitle)
         y -= 26
 
-        let savedWakes = UserDefaults.standard.stringArray(forKey: "realtimeWakeKeywords") ?? ["hey voice"]
+        let savedWakes = UserDefaults.standard.stringArray(forKey: "realtimeWakeKeywords") ?? ["登登同学"]
         let wakeField = NSTextField(frame: NSRect(x: 20, y: y, width: 320, height: 24))
         wakeField.stringValue = savedWakes.joined(separator: ", ")
         wakeField.placeholderString = "Comma separated, e.g.: hey voice"
