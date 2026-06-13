@@ -83,25 +83,31 @@ class RealtimeVoiceMode {
     private var triggerKeywords: [String]
     private var exitKeywords: [String]
     private var wakeKeywords: [String]
+    private var resetKeywords: [String]
     private var onSubmit: ((String) -> Void)?
     private var onStateChange: ((RealtimeVoiceState) -> Void)?
+
+    var currentState: RealtimeVoiceState { state }
 
     init(triggerKeywords: [String] = ["发送", "回车", "enter"],
          exitKeywords: [String] = ["退出", "exit"],
          wakeKeywords: [String] = ["hey voice", "嘿语音"],
+         resetKeywords: [String] = ["重来", "reset"],
          onSubmit: ((String) -> Void)? = nil,
          onStateChange: ((RealtimeVoiceState) -> Void)? = nil) {
         self.triggerKeywords = triggerKeywords
         self.exitKeywords = exitKeywords
         self.wakeKeywords = wakeKeywords
+        self.resetKeywords = resetKeywords
         self.onSubmit = onSubmit
         self.onStateChange = onStateChange
         self.ringBuffer = AudioRingBuffer(seconds: 30, sampleRate: 16000)
     }
 
-    func updateTriggerKeywords(_ keywords: [String]) {
-        triggerKeywords = keywords
-    }
+    func updateTriggerKeywords(_ keywords: [String]) { triggerKeywords = keywords }
+    func updateExitKeywords(_ keywords: [String]) { exitKeywords = keywords }
+    func updateWakeKeywords(_ keywords: [String]) { wakeKeywords = keywords }
+    func updateResetKeywords(_ keywords: [String]) { resetKeywords = keywords }
 
     func start() {
         guard state == .idle else { return }
@@ -248,6 +254,15 @@ class RealtimeVoiceMode {
             if lowerText.hasSuffix(keyword.lowercased()) || lowerText.contains(keyword) {
                 rtLog("Exit keyword detected: \(keyword)")
                 stop()
+                return
+            }
+        }
+
+        for keyword in resetKeywords {
+            if lowerText.hasSuffix(keyword.lowercased()) || lowerText.contains(keyword) {
+                rtLog("Reset keyword detected: \(keyword) - discarding and restarting")
+                utteranceStartFrame = ringBuffer.currentFrame
+                restartRecognitionIfNeeded()
                 return
             }
         }

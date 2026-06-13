@@ -107,17 +107,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             let triggers = UserDefaults.standard.stringArray(forKey: "realtimeTriggerKeywords") ?? ["发送", "回车", "enter"]
             let exits = UserDefaults.standard.stringArray(forKey: "realtimeExitKeywords") ?? ["退出", "exit"]
             let wakes = UserDefaults.standard.stringArray(forKey: "realtimeWakeKeywords") ?? ["hey voice"]
+            let resets = UserDefaults.standard.stringArray(forKey: "realtimeResetKeywords") ?? ["重来", "reset"]
 
             realtimeMode = RealtimeVoiceMode(
                 triggerKeywords: triggers,
                 exitKeywords: exits,
                 wakeKeywords: wakes,
+                resetKeywords: resets,
                 onSubmit: { [weak self] text in
                     self?.injectText(text)
                 },
                 onStateChange: { [weak self] newState in
                     DispatchQueue.main.async {
                         self?.updateRealtimeUI(newState)
+                        if newState == .idle {
+                            self?.realtimeMode = nil
+                            self?.realtimeMenuItem.title = "Realtime Voice Mode"
+                        }
                     }
                 }
             )
@@ -136,12 +142,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         switch voiceState {
         case .idle:
             statusItem.button?.title = "🎤"
+            floatingButton?.updateTitle("🎤")
         case .wakeListen:
             statusItem.button?.title = "👂"
+            floatingButton?.updateTitle("👂")
         case .active:
             statusItem.button?.title = "🗣️"
+            floatingButton?.updateTitle("🗣️")
         case .transcribing:
             statusItem.button?.title = "⏳"
+            floatingButton?.updateTitle("⏳")
         }
     }
 
@@ -218,7 +228,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func openSettings() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 360, height: 700),
+            contentRect: NSRect(x: 0, y: 0, width: 360, height: 900),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -228,7 +238,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         let contentView = NSView(frame: window.contentView!.bounds)
 
-        var y = 665
+        var y = 865
 
         let hotkeyTitle = NSTextField(labelWithString: "Hotkey:")
         hotkeyTitle.frame = NSRect(x: 20, y: y, width: 320, height: 18)
@@ -385,6 +395,50 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         exitHint.font = NSFont.systemFont(ofSize: 10)
         exitHint.textColor = .secondaryLabelColor
         contentView.addSubview(exitHint)
+        y -= 30
+
+        let resetTitle = NSTextField(labelWithString: "Realtime Mode Reset Keywords:")
+        resetTitle.frame = NSRect(x: 20, y: y, width: 320, height: 18)
+        resetTitle.font = NSFont.boldSystemFont(ofSize: 12)
+        contentView.addSubview(resetTitle)
+        y -= 26
+
+        let savedResets = UserDefaults.standard.stringArray(forKey: "realtimeResetKeywords") ?? ["重来", "reset"]
+        let resetField = NSTextField(frame: NSRect(x: 20, y: y, width: 320, height: 24))
+        resetField.stringValue = savedResets.joined(separator: ", ")
+        resetField.placeholderString = "Comma separated, e.g.: 重来, reset"
+        resetField.target = self
+        resetField.action = #selector(resetKeywordsChanged(_:))
+        contentView.addSubview(resetField)
+        y -= 18
+
+        let resetHint = NSTextField(labelWithString: "Say these words to discard and restart.")
+        resetHint.frame = NSRect(x: 20, y: y, width: 320, height: 14)
+        resetHint.font = NSFont.systemFont(ofSize: 10)
+        resetHint.textColor = .secondaryLabelColor
+        contentView.addSubview(resetHint)
+        y -= 30
+
+        let wakeTitle = NSTextField(labelWithString: "Wake Word:")
+        wakeTitle.frame = NSRect(x: 20, y: y, width: 320, height: 18)
+        wakeTitle.font = NSFont.boldSystemFont(ofSize: 12)
+        contentView.addSubview(wakeTitle)
+        y -= 26
+
+        let savedWakes = UserDefaults.standard.stringArray(forKey: "realtimeWakeKeywords") ?? ["hey voice"]
+        let wakeField = NSTextField(frame: NSRect(x: 20, y: y, width: 320, height: 24))
+        wakeField.stringValue = savedWakes.joined(separator: ", ")
+        wakeField.placeholderString = "Comma separated, e.g.: hey voice"
+        wakeField.target = self
+        wakeField.action = #selector(wakeKeywordsChanged(_:))
+        contentView.addSubview(wakeField)
+        y -= 18
+
+        let wakeHint = NSTextField(labelWithString: "Say this to activate Realtime Mode hands-free.")
+        wakeHint.frame = NSRect(x: 20, y: y, width: 320, height: 14)
+        wakeHint.font = NSFont.systemFont(ofSize: 10)
+        wakeHint.textColor = .secondaryLabelColor
+        contentView.addSubview(wakeHint)
 
         window.contentView = contentView
         window.makeKeyAndOrderFront(nil)
@@ -433,7 +487,28 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }
         UserDefaults.standard.set(keywords, forKey: "realtimeExitKeywords")
+        realtimeMode?.updateExitKeywords(keywords)
         debugLog("Exit keywords: \(keywords)")
+    }
+
+    @objc private func resetKeywordsChanged(_ sender: NSTextField) {
+        let keywords = sender.stringValue
+            .components(separatedBy: ",")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        UserDefaults.standard.set(keywords, forKey: "realtimeResetKeywords")
+        realtimeMode?.updateResetKeywords(keywords)
+        debugLog("Reset keywords: \(keywords)")
+    }
+
+    @objc private func wakeKeywordsChanged(_ sender: NSTextField) {
+        let keywords = sender.stringValue
+            .components(separatedBy: ",")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        UserDefaults.standard.set(keywords, forKey: "realtimeWakeKeywords")
+        realtimeMode?.updateWakeKeywords(keywords)
+        debugLog("Wake keywords: \(keywords)")
     }
 
     private func checkHotkeyConflict(keyCode: UInt32, modifiers: UInt32) -> String? {
@@ -644,6 +719,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func toggleRecording() {
+        if realtimeMode != nil {
+            toggleRealtimeMode()
+            return
+        }
         switch state {
         case .idle:
             startRecording()
@@ -1055,6 +1134,11 @@ class FloatingRecordButton {
 
     func hide() {
         panel.orderOut(nil)
+    }
+
+    func updateTitle(_ title: String) {
+        button.title = title
+        button.needsDisplay = true
     }
 
     func resize(by delta: CGFloat) {
