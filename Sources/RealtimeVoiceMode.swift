@@ -79,6 +79,7 @@ class RealtimeVoiceMode {
     private var recognitionTask: SFSpeechRecognitionTask?
     private var utteranceStartFrame: Int = 0
     private var sessionStartTime: Date?
+    private var noSpeechCount: Int = 0
 
     private var triggerKeywords: [String]
     private var exitKeywords: [String]
@@ -210,6 +211,7 @@ class RealtimeVoiceMode {
             if let result = result {
                 let text = result.bestTranscription.formattedString
                 rtLog("Heard: \(text)")
+                self.noSpeechCount = 0
                 self.processRecognitionResult(text, segments: result.bestTranscription.segments)
             }
 
@@ -221,9 +223,17 @@ class RealtimeVoiceMode {
             }
 
             if isFinal || error != nil {
-                let delay = isNoSpeech ? 0.1 : 1.0
-                DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                    self.restartRecognitionIfNeeded()
+                if isNoSpeech {
+                    self.noSpeechCount += 1
+                    let delay = min(Double(self.noSpeechCount) * 2.0, 10.0)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                        self.restartRecognitionIfNeeded()
+                    }
+                } else {
+                    self.noSpeechCount = 0
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                        self.restartRecognitionIfNeeded()
+                    }
                 }
             }
         }

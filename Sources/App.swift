@@ -134,14 +134,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func toggleRealtimeMode() {
-        if let mode = realtimeMode, mode.currentState == .active || mode.currentState == .transcribing {
+        if let mode = realtimeMode {
             mode.stop()
             realtimeMode = nil
             realtimeMenuItem.title = "Realtime Voice Mode"
             statusItem.button?.title = "🎤"
             floatingButton?.updateState(.idle)
+            floatingButton?.updateState(.idle)
             startWakeListening()
-        } else if realtimeMode == nil || realtimeMode?.currentState == .wakeListen {
+        } else {
             realtimeMode?.stop()
             let triggers = UserDefaults.standard.stringArray(forKey: "realtimeTriggerKeywords") ?? ["完毕"]
             let exits = UserDefaults.standard.stringArray(forKey: "realtimeExitKeywords") ?? ["退出语音"]
