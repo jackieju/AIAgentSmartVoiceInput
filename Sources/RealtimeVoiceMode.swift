@@ -254,10 +254,11 @@ class RealtimeVoiceMode {
 
         for keyword in triggerKeywords {
             if lowerText.hasSuffix(keyword.lowercased()) || lowerText.hasSuffix(keyword) {
-                rtLog("Trigger keyword detected: \(keyword)")
+                rtLog("Trigger keyword detected: \(keyword) in text: [\(text)]")
                 let content = text
                     .replacingOccurrences(of: keyword, with: "")
                     .trimmingCharacters(in: .whitespacesAndNewlines)
+                rtLog("Content after removing keyword: [\(content)] (len=\(content.count))")
                 if !content.isEmpty {
                     state = .transcribing
                     onStateChange?(.transcribing)
@@ -265,6 +266,8 @@ class RealtimeVoiceMode {
                     rtLog("Submitted: \(content)")
                     state = .active
                     onStateChange?(.active)
+                } else {
+                    rtLog("Content empty, not submitting")
                 }
                 utteranceStartFrame = ringBuffer.currentFrame
                 restartRecognitionIfNeeded()
