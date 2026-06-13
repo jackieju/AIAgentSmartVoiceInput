@@ -65,6 +65,38 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if !UserDefaults.standard.contains(key: "showFloatingButton") || UserDefaults.standard.bool(forKey: "showFloatingButton") {
             floatingButton = FloatingRecordButton(delegate: self)
         }
+        startWakeListening()
+    }
+
+    private func startWakeListening() {
+        let triggers = UserDefaults.standard.stringArray(forKey: "realtimeTriggerKeywords") ?? ["完毕"]
+        let exits = UserDefaults.standard.stringArray(forKey: "realtimeExitKeywords") ?? ["退出语音"]
+        let wakes = UserDefaults.standard.stringArray(forKey: "realtimeWakeKeywords") ?? ["登登同学"]
+        let resets = UserDefaults.standard.stringArray(forKey: "realtimeResetKeywords") ?? ["不算重来"]
+
+        realtimeMode = RealtimeVoiceMode(
+            triggerKeywords: triggers,
+            exitKeywords: exits,
+            wakeKeywords: wakes,
+            resetKeywords: resets,
+            onSubmit: { [weak self] text, targetTab in
+                self?.injectTextToTarget(text, target: targetTab)
+            },
+            onStateChange: { [weak self] newState in
+                DispatchQueue.main.async {
+                    self?.updateRealtimeUI(newState)
+                    if newState == .idle {
+                        self?.realtimeMode = nil
+                        self?.realtimeMenuItem.title = "Realtime Voice Mode"
+                        self?.startWakeListening()
+                    } else if newState == .active {
+                        self?.realtimeMenuItem.title = "Stop Realtime Mode"
+                    }
+                }
+            }
+        )
+        realtimeMode?.startWakeMode()
+        realtimeMenuItem?.title = "Stop Realtime Mode"
     }
 
     private func setupStatusItem() {
@@ -103,7 +135,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func toggleRealtimeMode() {
-        if realtimeMode == nil {
+        if let mode = realtimeMode, mode.currentState == .active || mode.currentState == .transcribing {
+            mode.stop()
+            realtimeMode = nil
+            realtimeMenuItem.title = "Realtime Voice Mode"
+            statusItem.button?.title = "🎤"
+            floatingButton?.updateState(.idle)
+            startWakeListening()
+        } else if realtimeMode == nil || realtimeMode?.currentState == .wakeListen {
+            realtimeMode?.stop()
             let triggers = UserDefaults.standard.stringArray(forKey: "realtimeTriggerKeywords") ?? ["完毕"]
             let exits = UserDefaults.standard.stringArray(forKey: "realtimeExitKeywords") ?? ["退出语音"]
             let wakes = UserDefaults.standard.stringArray(forKey: "realtimeWakeKeywords") ?? ["登登同学"]
@@ -123,18 +163,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                         if newState == .idle {
                             self?.realtimeMode = nil
                             self?.realtimeMenuItem.title = "Realtime Voice Mode"
+                            self?.startWakeListening()
                         }
                     }
                 }
             )
             realtimeMode?.start()
             realtimeMenuItem.title = "Stop Realtime Mode"
-        } else {
-            realtimeMode?.stop()
-            realtimeMode = nil
-            realtimeMenuItem.title = "Realtime Voice Mode"
-            statusItem.button?.title = "🎤"
-            floatingButton?.updateState(.idle)
         }
     }
 
