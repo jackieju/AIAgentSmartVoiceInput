@@ -87,7 +87,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     if newState == .idle {
                         self?.realtimeMode = nil
                         self?.realtimeMenuItem.title = "Realtime Voice Mode"
-                        self?.startWakeListening()
                     } else if newState == .active {
                         self?.realtimeMenuItem.title = "Stop Realtime Mode"
                     }
@@ -140,10 +139,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             realtimeMenuItem.title = "Realtime Voice Mode"
             statusItem.button?.title = "🎤"
             floatingButton?.updateState(.idle)
-            floatingButton?.updateState(.idle)
-            startWakeListening()
         } else {
-            realtimeMode?.stop()
             let triggers = UserDefaults.standard.stringArray(forKey: "realtimeTriggerKeywords") ?? ["完毕"]
             let exits = UserDefaults.standard.stringArray(forKey: "realtimeExitKeywords") ?? ["退出语音"]
             let wakes = UserDefaults.standard.stringArray(forKey: "realtimeWakeKeywords") ?? ["登登同学"]
@@ -163,7 +159,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                         if newState == .idle {
                             self?.realtimeMode = nil
                             self?.realtimeMenuItem.title = "Realtime Voice Mode"
-                            self?.startWakeListening()
                         }
                     }
                 }
@@ -806,7 +801,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 DispatchQueue.main.async {
                     self.state = .idle
                     self.updateStatusIcon()
-                    self.startWakeListening()
                 }
                 return
             }
@@ -817,7 +811,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 }
                 self.state = .idle
                 self.updateStatusIcon()
-                self.startWakeListening()
             }
         }
     }
