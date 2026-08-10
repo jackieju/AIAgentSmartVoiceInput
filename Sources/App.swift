@@ -55,6 +55,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var floatingButton: FloatingRecordButton?
     private var realtimeMode: RealtimeVoiceMode?
     private var realtimeMenuItem: NSMenuItem!
+    private var savedRecordings: [URL] = []
+    private let maxSavedRecordings = 3
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupStatusItem()
@@ -795,6 +797,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         updateStatusIcon()
         debugLog(" Recording stopped, transcribing...")
 
+        saveRecording(wavURL)
+
         DispatchQueue.global(qos: .userInitiated).async {
             if !self.audioHasSpeech(wavURL: wavURL) {
                 debugLog("Audio too quiet, likely no speech — skipping")
@@ -812,6 +816,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 self.state = .idle
                 self.updateStatusIcon()
             }
+        }
+    }
+
+    private func saveRecording(_ wavURL: URL) {
+        let saveDir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+            .appendingPathComponent("VoiceInput/recordings")
+        try? FileManager.default.createDirectory(at: saveDir, withIntermediateDirectories: true)
+
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd_HHmmss"
+        let filename = "recording_\(formatter.string(from: Date())).wav"
+        let destURL = saveDir.appendingPathComponent(filename)
+
+        try? FileManager.default.copyItem(at: wavURL, to: destURL)
+        savedRecordings.append(destURL)
+        debugLog("Saved recording: \(destURL.path)")
+
+        while savedRecordings.count > maxSavedRecordings {
+            let oldest = savedRecordings.removeFirst()
+            try? FileManager.default.removeItem(at: oldest)
+            debugLog("Removed old recording: \(oldest.path)")
         }
     }
 
