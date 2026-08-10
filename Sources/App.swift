@@ -1002,8 +1002,33 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         injectTextToTarget(text, target: nil)
     }
 
+    private func isContinueKeyword(_ text: String) -> Bool {
+        let normalized = text
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: CharacterSet(charactersIn: ".,!?。，！？"))
+            .lowercased()
+        let keywords: Set<String> = [
+            "continue", "skip", "next", "go on", "keep going",
+            "继续", "跳过", "下一个", "接着说", "往下"
+        ]
+        return keywords.contains(normalized)
+    }
+
     private func injectTextToTarget(_ text: String, target: String?) {
         debugLog("Injecting text: \(text), target: \(target ?? "default")")
+
+        // ctl symlink presence = TTS player is paused at a code block waiting for skip signal
+        let ctlSymlink = "/tmp/opencode_tts_current.ctl"
+        if isContinueKeyword(text), FileManager.default.fileExists(atPath: ctlSymlink) {
+            do {
+                try Data().write(to: URL(fileURLWithPath: ctlSymlink))
+                debugLog("Continue keyword intercepted: touched TTS ctl file, skipping injection")
+            } catch {
+                debugLog("Failed to touch TTS ctl file: \(error)")
+            }
+            return
+        }
+
         ensureDaemonRunning()
 
         if let target = target {
