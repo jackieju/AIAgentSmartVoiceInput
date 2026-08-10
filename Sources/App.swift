@@ -917,6 +917,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             "-l", langArg,
             "--no-timestamps",
             "-t", "4",
+            "--vad",
+            "--vad-threshold", "0.3",
         ]
 
         let pipe = Pipe()
