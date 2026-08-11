@@ -81,12 +81,6 @@ class RealtimeVoiceMode {
     private var sessionStartTime: Date?
     private var noSpeechCount: Int = 0
 
-    // SFSpeech returns each utterance as a separate result; trigger word "完毕"
-    // may arrive alone, so we accumulate finalized utterances across results.
-    private var committedText: String = ""
-    private var currentUtteranceText: String = ""
-    private var currentUtteranceStartTs: TimeInterval = -1
-
     private var triggerKeywords: [String]
     private var exitKeywords: [String]
     private var wakeKeywords: [String]
@@ -128,7 +122,6 @@ class RealtimeVoiceMode {
                 self.setupAudioEngine()
                 self.startRecognition()
                 self.state = .active
-                self.clearBuffers()
                 self.utteranceStartFrame = self.ringBuffer.currentFrame
                 self.onStateChange?(.active)
                 rtLog("Realtime mode ACTIVE")
@@ -153,7 +146,6 @@ class RealtimeVoiceMode {
     func stop() {
         tearDown()
         state = .idle
-        clearBuffers()
         onStateChange?(.idle)
     }
 
@@ -249,48 +241,14 @@ class RealtimeVoiceMode {
         scheduleSessionRestart()
     }
 
-    private func clearBuffers() {
-        committedText = ""
-        currentUtteranceText = ""
-        currentUtteranceStartTs = -1
-    }
-
     private func processRecognitionResult(_ text: String, segments: [SFTranscriptionSegment]) {
-        if state == .active {
-            let firstTs = segments.first?.timestamp ?? -1
-            let isNewUtterance: Bool = {
-                if currentUtteranceStartTs < 0 { return true }
-                if firstTs > 0, firstTs != currentUtteranceStartTs { return true }
-                if !text.hasPrefix(currentUtteranceText) && !currentUtteranceText.hasPrefix(text) { return true }
-                return false
-            }()
-
-            if isNewUtterance {
-                if !currentUtteranceText.isEmpty {
-                    if !committedText.isEmpty { committedText += " " }
-                    committedText += currentUtteranceText
-                }
-                currentUtteranceText = text
-                currentUtteranceStartTs = firstTs
-            } else {
-                currentUtteranceText = text
-            }
-        }
-
-        let scanText: String = {
-            if committedText.isEmpty { return currentUtteranceText }
-            if currentUtteranceText.isEmpty { return committedText }
-            return committedText + " " + currentUtteranceText
-        }()
-        let scanNorm = normalizedForMatch(scanText)
+        let lowerText = text.lowercased()
 
         if state == .wakeListen {
-            let wakeNorm = normalizedForMatch(text)
             for keyword in wakeKeywords {
-                if wakeNorm.contains(normalizedForMatch(keyword)) {
+                if lowerText.contains(keyword.lowercased()) {
                     rtLog("Wake word detected: \(keyword)")
                     state = .active
-                    clearBuffers()
                     utteranceStartFrame = ringBuffer.currentFrame
                     onStateChange?(.active)
                     restartRecognitionIfNeeded()
@@ -303,17 +261,16 @@ class RealtimeVoiceMode {
         guard state == .active else { return }
 
         for keyword in exitKeywords {
-            if scanNorm.contains(normalizedForMatch(keyword)) {
-                rtLog("Exit keyword detected: \(keyword) in [\(scanText)]")
+            if lowerText.contains(keyword.lowercased()) || text.contains(keyword) {
+                rtLog("Exit keyword detected: \(keyword) in [\(text)]")
                 stop()
                 return
             }
         }
 
         for keyword in resetKeywords {
-            if scanNorm.contains(normalizedForMatch(keyword)) {
+            if lowerText.hasSuffix(keyword.lowercased()) || lowerText.contains(keyword) {
                 rtLog("Reset keyword detected: \(keyword) - discarding and restarting")
-                clearBuffers()
                 utteranceStartFrame = ringBuffer.currentFrame
                 restartRecognitionIfNeeded()
                 return
@@ -321,64 +278,39 @@ class RealtimeVoiceMode {
         }
 
         for keyword in triggerKeywords {
-            guard scanNorm.contains(normalizedForMatch(keyword)) else { continue }
-            rtLog("Trigger keyword detected: \(keyword) in scan: [\(scanText)]")
-            var content = stripFromKeyword(scanText, keyword: keyword)
-                .trimmingCharacters(in: CharacterSet.whitespacesAndNewlines.union(.punctuationCharacters))
+            if lowerText.hasSuffix(keyword.lowercased()) || lowerText.hasSuffix(keyword) {
+                rtLog("Trigger keyword detected: \(keyword) in text: [\(text)]")
+                var content = text
+                    .replacingOccurrences(of: keyword, with: "")
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
 
-            var targetTab: String? = nil
-            let tellPattern = "告诉"
-            if content.hasPrefix(tellPattern) {
-                let afterTell = String(content.dropFirst(tellPattern.count)).trimmingCharacters(in: .whitespaces)
-                let (target, remaining) = parseTellTarget(afterTell)
-                if let t = target {
-                    targetTab = t
-                    content = remaining
+                var targetTab: String? = nil
+                let tellPattern = "告诉"
+                if content.hasPrefix(tellPattern) {
+                    let afterTell = String(content.dropFirst(tellPattern.count)).trimmingCharacters(in: .whitespaces)
+                    let (target, remaining) = parseTellTarget(afterTell)
+                    if let t = target {
+                        targetTab = t
+                        content = remaining
+                    }
                 }
+
+                rtLog("Content: [\(content)], targetTab: \(targetTab ?? "default")")
+                if !content.isEmpty {
+                    state = .transcribing
+                    onStateChange?(.transcribing)
+                    onSubmit?(content, targetTab)
+                    rtLog("Submitted: \(content) -> \(targetTab ?? "default")")
+                    state = .active
+                    onStateChange?(.active)
+                } else {
+                    rtLog("Content empty, not submitting")
+                }
+                utteranceStartFrame = ringBuffer.currentFrame
+                restartRecognitionIfNeeded()
+                return
             }
-
-            rtLog("Content: [\(content)], targetTab: \(targetTab ?? "default")")
-            if !content.isEmpty {
-                state = .transcribing
-                onStateChange?(.transcribing)
-                onSubmit?(content, targetTab)
-                rtLog("Submitted: \(content) -> \(targetTab ?? "default")")
-                state = .active
-                onStateChange?(.active)
-            } else {
-                rtLog("Content empty, not submitting")
-            }
-            clearBuffers()
-            utteranceStartFrame = ringBuffer.currentFrame
-            restartRecognitionIfNeeded()
-            return
         }
-    }
-
-    private func normalizedForMatch(_ s: String) -> String {
-        let stripped = s.unicodeScalars.filter { scalar in
-            !CharacterSet.whitespacesAndNewlines.contains(scalar) &&
-            !CharacterSet.punctuationCharacters.contains(scalar)
-        }
-        return String(String.UnicodeScalarView(stripped)).lowercased()
-    }
-
-    private func stripFromKeyword(_ text: String, keyword: String) -> String {
-        if let r = text.range(of: keyword) {
-            return String(text[..<r.lowerBound])
-        }
-        let kwNorm = normalizedForMatch(keyword)
-        let tNorm = normalizedForMatch(text)
-        guard let rNorm = tNorm.range(of: kwNorm) else { return text }
-        let targetNorm = tNorm.distance(from: tNorm.startIndex, to: rNorm.lowerBound)
-        var consumedNorm = 0
-        var idx = text.startIndex
-        while idx < text.endIndex && consumedNorm < targetNorm {
-            let chNorm = normalizedForMatch(String(text[idx]))
-            if !chNorm.isEmpty { consumedNorm += chNorm.count }
-            idx = text.index(after: idx)
-        }
-        return String(text[..<idx])
     }
 
     private func parseTellTarget(_ text: String) -> (String?, String) {
