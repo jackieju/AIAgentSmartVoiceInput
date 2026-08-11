@@ -56,7 +56,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var floatingButton: FloatingRecordButton?
     private var realtimeMode: RealtimeVoiceMode?
     private var realtimeMenuItem: NSMenuItem!
-    private var savedRecordings: [URL] = []
     private let maxSavedRecordings = 3
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -71,7 +70,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func startWakeListening() {
-        let triggers = UserDefaults.standard.stringArray(forKey: "realtimeTriggerKeywords") ?? ["完毕"]
+        let triggers = UserDefaults.standard.stringArray(forKey: "realtimeTriggerKeywords") ?? ["完毕", "over"]
         let exits = UserDefaults.standard.stringArray(forKey: "realtimeExitKeywords") ?? ["退出语音"]
         let wakes = UserDefaults.standard.stringArray(forKey: "realtimeWakeKeywords") ?? ["登登同学"]
         let resets = UserDefaults.standard.stringArray(forKey: "realtimeResetKeywords") ?? ["不算重来"]
@@ -143,7 +142,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             statusItem.button?.title = "🎤"
             floatingButton?.updateState(.idle)
         } else {
-            let triggers = UserDefaults.standard.stringArray(forKey: "realtimeTriggerKeywords") ?? ["完毕"]
+            let triggers = UserDefaults.standard.stringArray(forKey: "realtimeTriggerKeywords") ?? ["完毕", "over"]
             let exits = UserDefaults.standard.stringArray(forKey: "realtimeExitKeywords") ?? ["退出语音"]
             let wakes = UserDefaults.standard.stringArray(forKey: "realtimeWakeKeywords") ?? ["登登同学"]
             let resets = UserDefaults.standard.stringArray(forKey: "realtimeResetKeywords") ?? ["不算重来"]
@@ -392,7 +391,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         contentView.addSubview(triggerTitle)
         y -= 26
 
-        let savedTriggers = UserDefaults.standard.stringArray(forKey: "realtimeTriggerKeywords") ?? ["完毕"]
+        let savedTriggers = UserDefaults.standard.stringArray(forKey: "realtimeTriggerKeywords") ?? ["完毕", "over"]
         let triggerField = NSTextField(frame: NSRect(x: 20, y: y, width: 320, height: 24))
         triggerField.stringValue = savedTriggers.joined(separator: ", ")
         triggerField.placeholderString = "Comma separated, e.g.: 发送, 回车, enter"
@@ -865,13 +864,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let destURL = saveDir.appendingPathComponent(filename)
 
         try? FileManager.default.copyItem(at: wavURL, to: destURL)
-        savedRecordings.append(destURL)
         debugLog("Saved recording: \(destURL.path)")
 
-        while savedRecordings.count > maxSavedRecordings {
-            let oldest = savedRecordings.removeFirst()
-            try? FileManager.default.removeItem(at: oldest)
-            debugLog("Removed old recording: \(oldest.path)")
+        // Prune by scanning disk (not in-memory) so cleanup survives app restarts.
+        let allRecordings = (try? FileManager.default.contentsOfDirectory(
+            at: saveDir, includingPropertiesForKeys: nil))?
+            .filter { $0.pathExtension == "wav" }
+            .sorted { $0.lastPathComponent < $1.lastPathComponent } ?? []
+
+        if allRecordings.count > maxSavedRecordings {
+            let toRemove = allRecordings.dropLast(maxSavedRecordings)
+            for oldest in toRemove {
+                try? FileManager.default.removeItem(at: oldest)
+                debugLog("Removed old recording: \(oldest.path)")
+            }
         }
     }
 
