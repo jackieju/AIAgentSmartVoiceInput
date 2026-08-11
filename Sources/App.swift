@@ -51,6 +51,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var audioRecorder: AudioRecorder?
     private var currentHotKeyRef: EventHotKeyRef?
     private var escHotKeyRef: EventHotKeyRef?
+    private var stopTTSHotKeyRef: EventHotKeyRef?
     private var hotkeyLabel: NSMenuItem!
     private var floatingButton: FloatingRecordButton?
     private var realtimeMode: RealtimeVoiceMode?
@@ -607,6 +608,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
+        if let existing = stopTTSHotKeyRef {
+            UnregisterEventHotKey(existing)
+            stopTTSHotKeyRef = nil
+        }
+        let stopTTSID = EventHotKeyID(signature: OSType(0x56494E50), id: 3)
+        let stopStatus = RegisterEventHotKey(UInt32(kVK_ANSI_6), UInt32(cmdKey), stopTTSID, GetApplicationEventTarget(), 0, &stopTTSHotKeyRef)
+        if stopStatus != noErr {
+            debugLog("Failed to register stop-TTS hotkey (status: \(stopStatus))")
+        }
+
         var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
         InstallEventHandler(GetApplicationEventTarget(), { (_, event, _) -> OSStatus in
             var hotkeyID = EventHotKeyID()
@@ -615,6 +626,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             let app = NSApplication.shared.delegate as! AppDelegate
             if hotkeyID.id == 2 {
                 DispatchQueue.main.async { app.cancelRecording() }
+            } else if hotkeyID.id == 3 {
+                DispatchQueue.main.async { app.stopTTS() }
             } else {
                 DispatchQueue.main.async { app.toggleRecording() }
             }
@@ -632,6 +645,28 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         state = .idle
         updateStatusIcon()
         debugLog("Recording cancelled by Escape")
+    }
+
+    func stopTTS() {
+        for tool in ["afplay", "say"] {
+            let proc = Process()
+            proc.executableURL = URL(fileURLWithPath: "/usr/bin/killall")
+            proc.arguments = [tool]
+            proc.standardError = FileHandle.nullDevice
+            try? proc.run()
+            proc.waitUntilExit()
+        }
+
+        let tmp = "/tmp"
+        if let entries = try? FileManager.default.contentsOfDirectory(atPath: tmp) {
+            for name in entries where name.hasPrefix("opencode_tts_") && name.hasSuffix(".ctl") {
+                let session = name.dropFirst("opencode_tts_".count).dropLast(".ctl".count)
+                if session == "current" { continue }
+                let abortPath = "\(tmp)/opencode_tts_\(session).abort"
+                FileManager.default.createFile(atPath: abortPath, contents: Data())
+            }
+        }
+        debugLog("TTS interrupted by Cmd+6")
     }
 
     private func registerEscapeKey() {
