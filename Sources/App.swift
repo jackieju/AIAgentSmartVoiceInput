@@ -917,24 +917,29 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             "-l", langArg,
             "--no-timestamps",
             "-t", "4",
-            "--vad",
-            "--vad-threshold", "0.3",
         ]
 
         let pipe = Pipe()
+        let errPipe = Pipe()
         process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
+        process.standardError = errPipe
 
+        debugLog(" whisper cmd: \(whisperPath) \(process.arguments?.joined(separator: " ") ?? "")")
         do {
             try process.run()
-            process.waitUntilExit()
         } catch {
             debugLog(" whisper-cli failed: \(error)")
             return nil
         }
 
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        return String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let outData = pipe.fileHandleForReading.readDataToEndOfFile()
+        let errData = errPipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+
+        let raw = String(data: outData, encoding: .utf8) ?? ""
+        let errStr = String(data: errData, encoding: .utf8) ?? ""
+        debugLog(" whisper exit=\(process.terminationStatus) stdoutBytes=\(outData.count) stderrTail=\(errStr.suffix(300))")
+        return raw.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func transcribeViaAPI(wavURL: URL, provider: String) -> String? {
