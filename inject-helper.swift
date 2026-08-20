@@ -118,12 +118,22 @@ func activateByOverride(_ target: String) {
 }
 
 func injectNow(_ text: String) {
+    let appFile = "/tmp/voiceinput_target_app.txt"
+    let targetPidStr = (try? String(contentsOfFile: appFile, encoding: .utf8))?
+        .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    let genericApp = !targetPidStr.isEmpty && targetPidStr != "0"
+
     let pasteboard = NSPasteboard.general
     let old = pasteboard.string(forType: .string)
     pasteboard.clearContents()
     pasteboard.setString(text, forType: .string)
 
-    activateTargetTab()
+    if genericApp, let pid = Int32(targetPidStr),
+       let app = NSRunningApplication(processIdentifier: pid) {
+        app.activate()
+    } else {
+        activateTargetTab()
+    }
     Thread.sleep(forTimeInterval: 0.3)
 
     let source = CGEventSource(stateID: .hidSystemState)
@@ -134,12 +144,13 @@ func injectNow(_ text: String) {
     vDown?.post(tap: .cghidEventTap)
     vUp?.post(tap: .cghidEventTap)
 
-    Thread.sleep(forTimeInterval: 0.3)
-
-    let enterDown = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_Return), keyDown: true)
-    let enterUp = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_Return), keyDown: false)
-    enterDown?.post(tap: .cghidEventTap)
-    enterUp?.post(tap: .cghidEventTap)
+    if !genericApp {
+        Thread.sleep(forTimeInterval: 0.3)
+        let enterDown = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_Return), keyDown: true)
+        let enterUp = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_Return), keyDown: false)
+        enterDown?.post(tap: .cghidEventTap)
+        enterUp?.post(tap: .cghidEventTap)
+    }
 
     Thread.sleep(forTimeInterval: 0.2)
 

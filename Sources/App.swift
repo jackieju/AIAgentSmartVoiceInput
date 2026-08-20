@@ -699,6 +699,25 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    // Captures whichever app is frontmost when recording starts and decides the
+    // injection mode. Terminal -> existing opencode flow (tty tracking + Enter).
+    // Any other app (editor, browser, TextMate...) -> paste straight into that
+    // app by PID, no switch back to Terminal and no Enter.
+    private func saveTargetApp() {
+        let frontApp = NSWorkspace.shared.frontmostApplication
+        let bundleId = frontApp?.bundleIdentifier ?? ""
+        let appFile = "/tmp/voiceinput_target_app.txt"
+
+        if bundleId == "com.apple.Terminal" {
+            try? "".write(toFile: appFile, atomically: false, encoding: .utf8)
+            saveTargetTTY()
+        } else {
+            let pid = frontApp?.processIdentifier ?? 0
+            try? "\(pid)".write(toFile: appFile, atomically: false, encoding: .utf8)
+            debugLog("Target app (non-Terminal): \(bundleId) pid=\(pid)")
+        }
+    }
+
     private var previousVolume: String?
     private var didPausePlayback = false
 
@@ -806,7 +825,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func startRecording() {
         guard let recorder = audioRecorder else { return }
 
-        saveTargetTTY()
+        saveTargetApp()
         muteSystemAudio()
         registerEscapeKey()
 
